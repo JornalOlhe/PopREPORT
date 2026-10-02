@@ -1,0 +1,18 @@
+<mxfile host="app.diagrams.net" modified="2026-10-02T00:00:00.000Z" agent="ChatGPT" version="24.7.17"><diagram id="popreport" name="Modelo Conceitual"><mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="900" math="0" shadow="0"><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="a" value="ARTISTA
+id_artista
+nome
+imagem" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#3d4856;fontStyle=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="70" y="160" width="220" height="130" as="geometry"/></mxCell><mxCell id="g" value="GÊNERO
+id_genero
+nome" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#3d4856;fontStyle=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="570" y="80" width="220" height="110" as="geometry"/></mxCell><mxCell id="al" value="ÁLBUM
+id_album
+título
+ano_lançamento" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#3d4856;fontStyle=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="570" y="320" width="220" height="130" as="geometry"/></mxCell><mxCell id="m" value="MÚSICA
+id_musica
+título
+link_spotify" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#3d4856;fontStyle=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="1030" y="320" width="220" height="130" as="geometry"/></mxCell><mxCell id="u" value="USUÁRIO
+id_usuario
+nome
+email" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#3d4856;fontStyle=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="70" y="610" width="220" height="130" as="geometry"/></mxCell><mxCell id="p" value="PLAYLIST
+id_playlist
+nome
+descrição" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#3d4856;fontStyle=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="570" y="610" width="220" height="130" as="geometry"/></mxCell><mxCell id="e1" value="N : N  possui" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;fontStyle=1;" edge="1" parent="1" source="a" target="g"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e2" value="1 : N  lança" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;fontStyle=1;" edge="1" parent="1" source="a" target="al"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e3" value="1 : N  contém" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;fontStyle=1;" edge="1" parent="1" source="al" target="m"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e4" value="1 : N  cria" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;fontStyle=1;" edge="1" parent="1" source="u" target="p"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e5" value="N : N  inclui" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=none;fontStyle=1;" edge="1" parent="1" source="p" target="m"><mxGeometry relative="1" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>

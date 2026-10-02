@@ -1,0 +1,31 @@
+LE2 - CHECKLIST CONFORME AULA 31 BDAD / 4º BIMESTRE
+
+[OK] Projeto Web + BD: Músicas salvas lê o MySQL e o formulário grava no MySQL.
+[OK] Modelo com no mínimo 5 entidades: há 6 entidades principais + 2 associativas.
+[OK] Relacionamentos 1:N:
+     - ARTISTA 1:N ALBUM
+     - ALBUM 1:N MUSICA
+     - USUARIO 1:N PLAYLIST
+[OK] Relacionamentos N:N resolvidos por tabela associativa:
+     - ARTISTA N:N GENERO -> ARTISTA_GENERO
+     - PLAYLIST N:N MUSICA -> PLAYLIST_MUSICA
+[OK] Script com PRIMARY KEY, FOREIGN KEY, tipos adequados, NOT NULL e UNIQUE.
+[OK] Carga de dados inicial incluída em popreport.sql.
+[OK] Modelo conceitual editável: modelo_conceitual.drawio.
+[OK] Imagem do modelo conceitual: modelo_conceitual.png.
+[OK] Representação física de conferência: modelo_fisico.png.
+[OK] Código SQL do modelo físico: popreport.sql.
+[OK] Consultas de conferência: consultas.sql.
+[OK] Descrição do projeto: descricao_projeto.txt.
+[OK] Instruções do MySQL Workbench: INSTRUCOES_WORKBENCH.txt.
+
+IMPORTANTE SOBRE O ARQUIVO .MWB:
+A atividade pede que o DIAGRAMA FÍSICO seja gerado no MySQL Workbench. O arquivo
+.mwb é o formato nativo do Workbench. Para gerar exatamente esse arquivo:
+1) abra popreport.sql no Workbench e execute;
+2) Database > Reverse Engineer;
+3) selecione o schema popreport;
+4) finalize e salve como PopReport.mwb.
+
+A imagem modelo_fisico.png serve para conferir como o EER deve ficar, mas o .mwb
+final deve ser salvo pelo próprio MySQL Workbench, conforme exigido na aula.

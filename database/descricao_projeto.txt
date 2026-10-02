@@ -1,0 +1,37 @@
+POPREPORT — DESCRIÇÃO DO PROJETO DE BANCO DE DADOS
+
+O PopReport é um catálogo web musical integrado a um banco de dados MySQL e ao Deezer e, opcionalmente, à Spotify Web API. O objetivo do banco é manter um acervo persistente de artistas, gêneros, álbuns, músicas, usuários e playlists, permitindo que a aplicação web apresente os dados cadastrados em Músicas salvas e grave novas músicas por meio do formulário.
+
+CENÁRIO RESOLVIDO
+Antes da integração, os itens do catálogo existiam apenas no front-end. Com o banco, os dados passam a ser persistidos e relacionados. A página Músicas salvas consulta o MySQL para exibir o acervo, enquanto o formulário envia artista, música e URL do Spotify para o servidor, que valida os dados e grava o cadastro no banco.
+
+ENTIDADES PRINCIPAIS
+1. ARTISTA — armazena os artistas/bandas do catálogo.
+2. GENERO — armazena os gêneros musicais.
+3. ALBUM — armazena os álbuns de cada artista.
+4. MUSICA — armazena as faixas e links do Spotify.
+5. USUARIO — armazena usuários do catálogo.
+6. PLAYLIST — armazena playlists criadas pelos usuários.
+
+TABELAS ASSOCIATIVAS
+7. ARTISTA_GENERO — resolve o relacionamento N:N entre ARTISTA e GENERO.
+8. PLAYLIST_MUSICA — resolve o relacionamento N:N entre PLAYLIST e MUSICA.
+
+RELACIONAMENTOS 1:N
+- ARTISTA 1:N ALBUM
+- ALBUM 1:N MUSICA
+- USUARIO 1:N PLAYLIST
+
+RELACIONAMENTOS N:N RESOLVIDOS
+- ARTISTA N:N GENERO, resolvido por ARTISTA_GENERO.
+- PLAYLIST N:N MUSICA, resolvido por PLAYLIST_MUSICA.
+
+INTEGRIDADE
+O modelo utiliza chaves primárias, chaves estrangeiras, tipos adequados e restrições NOT NULL e UNIQUE. As chaves estrangeiras garantem integridade entre as tabelas e as restrições UNIQUE evitam duplicidades importantes, como e-mail de usuário, nome de gênero, identificador do Spotify e posição duplicada dentro de uma playlist.
+
+INTEGRAÇÃO COM A WEB
+- GET /api/catalogo: lê o catálogo do MySQL (endpoint acadêmico preservado).
+- GET /api/catalogo/search: pesquisa no banco local.
+- POST /api/lista: grava uma música no MySQL.
+- GET /api/lista: lista músicas salvas no banco.
+- GET /api/spotify/search: amplia a pesquisa usando a Spotify Web API.

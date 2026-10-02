@@ -1,0 +1,16 @@
+POPREPORT - COMO GERAR O MODELO FÍSICO NO MYSQL WORKBENCH
+
+1. Abra o MySQL Workbench e conecte no MySQL local.
+2. Abra o arquivo database/popreport.sql.
+3. Execute o script inteiro (ícone do raio).
+4. Confirme que o schema popreport apareceu em SCHEMAS.
+5. No menu, abra Database > Reverse Engineer.
+6. Escolha sua conexão e avance.
+7. Selecione somente o schema popreport.
+8. Avance até o Workbench importar as tabelas.
+9. Clique em Place imported objects on a diagram / Finish.
+10. Organize o EER Diagram, se necessário, e salve o modelo como PopReport.mwb.
+11. Para entregar uma imagem, use File > Export > Export as PNG/SVG/PDF.
+
+O projeto já inclui modelo_fisico_referencia.png para conferir a estrutura esperada.
+O arquivo oficial do Workbench (.mwb) deve ser salvo pelo próprio MySQL Workbench após o Reverse Engineer, pois é o formato nativo exigido pela atividade.

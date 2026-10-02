@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900">
+<defs>
+  <style>
+    .bg{fill:#f7f8fa}.entity{fill:#ffffff;stroke:#3d4856;stroke-width:2}.title{font:700 22px Arial,sans-serif;fill:#18202a}.attr{font:16px Arial,sans-serif;fill:#44505f}.rel{fill:#ecf8ef;stroke:#2f8f4e;stroke-width:2}.reltext{font:700 17px Arial,sans-serif;fill:#236d3b}.line{stroke:#596675;stroke-width:2;fill:none}.card{font:700 16px Arial,sans-serif;fill:#18202a}.heading{font:700 28px Arial,sans-serif;fill:#18202a}.sub{font:16px Arial,sans-serif;fill:#5f6b78}
+  </style>
+</defs>
+<rect class="bg" x="0" y="0" width="1500" height="900"/>
+<text class="heading" x="55" y="55">PopReport — Modelo Conceitual</text>
+<text class="sub" x="55" y="83">6 entidades principais • relacionamentos 1:N e N:N</text>
+
+<!-- Entities -->
+<g><rect class="entity" x="90" y="180" rx="16" width="250" height="150"/><text class="title" x="215" y="220" text-anchor="middle">ARTISTA</text><text class="attr" x="115" y="258">• id_artista</text><text class="attr" x="115" y="286">• nome</text><text class="attr" x="115" y="314">• imagem</text></g>
+<g><rect class="entity" x="625" y="110" rx="16" width="250" height="150"/><text class="title" x="750" y="150" text-anchor="middle">GÊNERO</text><text class="attr" x="650" y="188">• id_genero</text><text class="attr" x="650" y="216">• nome</text></g>
+<g><rect class="entity" x="625" y="350" rx="16" width="250" height="165"/><text class="title" x="750" y="390" text-anchor="middle">ÁLBUM</text><text class="attr" x="650" y="428">• id_album</text><text class="attr" x="650" y="456">• título</text><text class="attr" x="650" y="484">• ano_lançamento</text></g>
+<g><rect class="entity" x="1100" y="350" rx="16" width="250" height="165"/><text class="title" x="1225" y="390" text-anchor="middle">MÚSICA</text><text class="attr" x="1125" y="428">• id_musica</text><text class="attr" x="1125" y="456">• título</text><text class="attr" x="1125" y="484">• link_spotify</text></g>
+<g><rect class="entity" x="90" y="650" rx="16" width="250" height="150"/><text class="title" x="215" y="690" text-anchor="middle">USUÁRIO</text><text class="attr" x="115" y="728">• id_usuario</text><text class="attr" x="115" y="756">• nome</text><text class="attr" x="115" y="784">• email</text></g>
+<g><rect class="entity" x="625" y="650" rx="16" width="250" height="150"/><text class="title" x="750" y="690" text-anchor="middle">PLAYLIST</text><text class="attr" x="650" y="728">• id_playlist</text><text class="attr" x="650" y="756">• nome</text><text class="attr" x="650" y="784">• descrição</text></g>
+
+<!-- Relationships -->
+<g><polygon class="rel" points="475,145 555,190 475,235 395,190"/><text class="reltext" x="475" y="196" text-anchor="middle">possui</text></g>
+<path class="line" d="M340 220 L395 200"/><path class="line" d="M555 180 L625 175"/><text class="card" x="355" y="202">N</text><text class="card" x="595" y="164">N</text>
+
+<g><polygon class="rel" points="475,365 555,410 475,455 395,410"/><text class="reltext" x="475" y="416" text-anchor="middle">lança</text></g>
+<path class="line" d="M340 275 L420 365"/><path class="line" d="M555 410 L625 430"/><text class="card" x="355" y="308">1</text><text class="card" x="595" y="418">N</text>
+
+<g><polygon class="rel" points="985,375 1060,432 985,489 910,432"/><text class="reltext" x="985" y="438" text-anchor="middle">contém</text></g>
+<path class="line" d="M875 432 L910 432"/><path class="line" d="M1060 432 L1100 432"/><text class="card" x="884" y="420">1</text><text class="card" x="1074" y="420">N</text>
+
+<g><polygon class="rel" points="475,680 555,725 475,770 395,725"/><text class="reltext" x="475" y="731" text-anchor="middle">cria</text></g>
+<path class="line" d="M340 725 L395 725"/><path class="line" d="M555 725 L625 725"/><text class="card" x="355" y="712">1</text><text class="card" x="595" y="712">N</text>
+
+<g><polygon class="rel" points="985,665 1065,725 985,785 905,725"/><text class="reltext" x="985" y="731" text-anchor="middle">inclui</text></g>
+<path class="line" d="M875 725 L905 725"/><path class="line" d="M1065 725 L1210 515"/><text class="card" x="882" y="711">N</text><text class="card" x="1090" y="670">N</text>
+</svg>
