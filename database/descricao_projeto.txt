@@ -1,37 +1,15 @@
-POPREPORT — DESCRIÇÃO DO PROJETO DE BANCO DE DADOS
+POPREPORT — DESCRIÇÃO DO PROJETO
 
-O PopReport é um catálogo web musical integrado a um banco de dados MySQL e ao Deezer e, opcionalmente, à Spotify Web API. O objetivo do banco é manter um acervo persistente de artistas, gêneros, álbuns, músicas, usuários e playlists, permitindo que a aplicação web apresente os dados cadastrados em Músicas salvas e grave novas músicas por meio do formulário.
+O popreport é um catálogo musical que permite descobrir artistas, explorar suas biografias, discografias e músicas, salvar faixas por links oficiais do Spotify e organizar a coleção em playlists. O banco MySQL mantém o acervo e os relacionamentos entre artista, gênero, álbum, música, usuário e playlist.
 
-CENÁRIO RESOLVIDO
-Antes da integração, os itens do catálogo existiam apenas no front-end. Com o banco, os dados passam a ser persistidos e relacionados. A página Músicas salvas consulta o MySQL para exibir o acervo, enquanto o formulário envia artista, música e URL do Spotify para o servidor, que valida os dados e grava o cadastro no banco.
+Na versão local, a home apresenta uma seção Da sua coleção com itens consultados no banco; Músicas salvas também lê o MySQL. O formulário grava artista, álbum e música e permite informar gênero e selecionar uma playlist. O perfil edita o nome do usuário demonstrativo e o formulário de playlists grava playlists vinculadas a ele. O acervo mostra título, artista, álbum, gênero e permite filtrar por playlist.
 
-ENTIDADES PRINCIPAIS
-1. ARTISTA — armazena os artistas/bandas do catálogo.
-2. GENERO — armazena os gêneros musicais.
-3. ALBUM — armazena os álbuns de cada artista.
-4. MUSICA — armazena as faixas e links do Spotify.
-5. USUARIO — armazena usuários do catálogo.
-6. PLAYLIST — armazena playlists criadas pelos usuários.
+O usuário demonstrativo é identificado internamente por visitante@popreport.local. A versão local é uma demonstração acadêmica de uma coleção compartilhada no computador, sem autenticação ou contas privadas; o servidor fica limitado ao localhost. O e-mail fictício não é exibido na interface.
 
-TABELAS ASSOCIATIVAS
-7. ARTISTA_GENERO — resolve o relacionamento N:N entre ARTISTA e GENERO.
-8. PLAYLIST_MUSICA — resolve o relacionamento N:N entre PLAYLIST e MUSICA.
+No GitHub Pages, o site é estático e os dados pessoais da coleção ficam no navegador de cada visitante. Essa publicação não executa Node ou MySQL, portanto a demonstração acadêmica de conexão ao banco deve ser feita na versão local.
 
-RELACIONAMENTOS 1:N
-- ARTISTA 1:N ALBUM
-- ALBUM 1:N MUSICA
-- USUARIO 1:N PLAYLIST
+O modelo tem seis entidades principais: ARTISTA, GENERO, ALBUM, MUSICA, USUARIO e PLAYLIST. Há três relações 1:N (ARTISTA–ALBUM, ALBUM–MUSICA e USUARIO–PLAYLIST) e duas N:N (ARTISTA–GENERO e PLAYLIST–MUSICA), resolvidas por ARTISTA_GENERO e PLAYLIST_MUSICA. As associativas possuem chaves primárias compostas e chaves estrangeiras. O modelo usa InnoDB, UTF-8, NOT NULL e UNIQUE para preservar integridade e evitar duplicidades.
 
-RELACIONAMENTOS N:N RESOLVIDOS
-- ARTISTA N:N GENERO, resolvido por ARTISTA_GENERO.
-- PLAYLIST N:N MUSICA, resolvido por PLAYLIST_MUSICA.
+GET /api/lista consulta o catálogo de músicas; POST /api/lista grava a faixa e, quando selecionada, sua ligação com uma playlist. GET /api/collection consulta perfil e playlists; POST /api/collection salva o nome ou cria uma playlist. Consultas parametrizadas e transações protegem as gravações. A descoberta externa usa metadados públicos do Deezer; a biografia atribui a Wikipédia; o áudio utiliza o Spotify Embed oficial, sujeito às regras do serviço, sem baixar músicas comerciais.
 
-INTEGRIDADE
-O modelo utiliza chaves primárias, chaves estrangeiras, tipos adequados e restrições NOT NULL e UNIQUE. As chaves estrangeiras garantem integridade entre as tabelas e as restrições UNIQUE evitam duplicidades importantes, como e-mail de usuário, nome de gênero, identificador do Spotify e posição duplicada dentro de uma playlist.
-
-INTEGRAÇÃO COM A WEB
-- GET /api/catalogo: lê o catálogo do MySQL (endpoint acadêmico preservado).
-- GET /api/catalogo/search: pesquisa no banco local.
-- POST /api/lista: grava uma música no MySQL.
-- GET /api/lista: lista músicas salvas no banco.
-- GET /api/spotify/search: amplia a pesquisa usando a Spotify Web API.
+Conforme o PDF da Aula 31, o pacote inclui descrição, criação SQL, carga inicial, consultas e modelos de referência. A imagem gerada por IA não substitui o diagrama físico exigido no MySQL Workbench: é necessário importar o script, fazer Reverse Engineer, exportar o EER e salvar o arquivo .mwb no próprio Workbench.

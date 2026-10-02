@@ -4,6 +4,34 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const safeUrl = s => { try { const u = new URL(s); return u.protocol === 'https:' ? u.href : ''; } catch { return ''; } };
 const playIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
 const items = new Map();
+const originalPath=location.pathname;
+const originalQuery=new URLSearchParams(location.search);
+const appAddress=originalPath.replace(/[^/]*\.html$/, '') || '/';
+const entryScreen=({ 'artist.html':'artist','library.html':'library','form.html':'form' })[originalPath.split('/').pop()] || 'discover';
+const entryState=history.state?.screen ? history.state : {screen:entryScreen,id:originalQuery.get('id'),q:originalQuery.get('q')||'',filter:originalQuery.get('filter')||'all'};
+history.replaceState(entryState,'',appAddress);
+function showScreen(state,focus=true){
+  const screen=['discover','artist','library','form'].includes(state?.screen)?state.screen:'discover';
+  document.querySelectorAll('[data-screen-view]').forEach(s=>s.hidden=s.dataset.screenView!==screen);
+  document.querySelectorAll('nav [data-screen]').forEach(a=>{if(a.dataset.screen===screen)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+  document.title=({discover:'Descobrir',artist:'Artista',library:'Sua coleção',form:'Adicionar música'})[screen]+' — popreport';
+  if(dialog.open)dialog.close();
+  $('#previewFrame').removeAttribute('src'); $('#songPreview').hidden=true;
+  if(screen==='artist')loadArtist(state.id); else profileVersion++;
+  if(screen==='library'||screen==='form')loadLibrary();
+  if(screen==='discover')loadRecent();
+  if(focus){$('#main').focus({preventScroll:true});window.scrollTo({top:0});}
+}
+document.addEventListener('click',e=>{
+  if(e.target.closest('a.skip')){e.preventDefault();$('#main').focus();return;}
+  const link=e.target.closest('a[data-screen],a[data-artist]');
+  if(!link||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button)return;
+  e.preventDefault();
+  const state={...history.state,screen:link.dataset.artist?'artist':link.dataset.screen,id:link.dataset.artist||null};
+  history.pushState(state,'',appAddress);showScreen(state);
+});
+window.addEventListener('popstate',()=>showScreen(history.state));
+
 function remember(x) { const key = `${x.kind}:${x.id}`; items.set(key, x); return key; }
 function photo(x, portrait = false) { return `<img class="cover${portrait ? ' portrait' : ''}" src="${esc(safeUrl(x.image) || 'Imagens/fallback.svg')}" alt="${esc(x.name)}" loading="lazy" width="640" height="640">`; }
 document.addEventListener('error', event => { if (event.target instanceof HTMLImageElement && !event.target.src.endsWith('/fallback.svg')) event.target.src = 'Imagens/fallback.svg'; }, true);
@@ -12,11 +40,11 @@ async function api(url, signal) {
 }
 function play(x) { return `<button class="play" data-play="${esc(remember(x))}" aria-label="Ouvir ${esc(x.name)}">${playIcon}</button>`; }
 function card(x) {
-  if (x.kind === 'artist') return `<article class="card"><a href="artist.html?id=${encodeURIComponent(x.id)}">${photo(x,true)}<h3>${esc(x.name)}</h3></a><p>Artista · Ver perfil</p></article>`;
+  if (x.kind === 'artist') return `<article class="card"><a href="./" data-artist="${esc(x.id)}">${photo(x,true)}<h3>${esc(x.name)}</h3></a><p>Artista · Ver perfil</p></article>`;
   return `<article class="card"><div class="card-art">${photo(x)}${play(x)}</div><h3>${esc(x.name)}</h3><p>${artistLink(x)}</p>${x.releaseDate ? `<p>${esc(x.releaseDate.slice(0,4))}</p>` : ''}</article>`;
 }
-function artistLink(x) { return x.artistId ? `<a href="artist.html?id=${encodeURIComponent(x.artistId)}">${esc(x.artist || 'Ver artista')}</a>` : esc(x.artist || ''); }
-function row(x, i) { return `<article class="track"><span class="number">${i + 1}</span>${photo(x)}<div class="track-info"><strong>${esc(x.name)}</strong><small>${artistLink(x)}${x.duration ? ` · ${Math.floor(x.duration/60)}:${String(x.duration%60).padStart(2,'0')}` : ''}</small></div>${play(x)}</article>`; }
+function artistLink(x) { return x.artistId ? `<a href="./" data-artist="${esc(x.artistId)}">${esc(x.artist || 'Ver artista')}</a>` : esc(x.artist || ''); }
+function row(x, i) { return `<article class="track"><span class="number">${i + 1}</span>${photo(x)}<div class="track-info"><strong>${esc(x.name)}</strong><small>${artistLink(x)}${x.album ? ` · ${esc(x.album)}` : ''}${x.genre ? ` · ${esc(x.genre)}` : ''}${Number(x.duration) > 0 ? ` · ${Math.floor(x.duration/60)}:${String(x.duration%60).padStart(2,'0')}` : ''}</small></div>${play(x)}</article>`; }
 function status(text, error = false) { $('#status').textContent = text; $('#status').classList.toggle('error',error); }
 document.addEventListener('click', e => { const button = e.target.closest('[data-play]'); if (button) openPlayer(items.get(button.dataset.play)); });
 
@@ -71,7 +99,7 @@ $('#directPlayer')?.addEventListener('click', () => openPlayer());
 
 if ($('#searchForm')) {
   let filter = 'all', offset = 0, controller, generation = 0, combined = {artists:[],albums:[],tracks:[]};
-  const initial = new URLSearchParams(location.search);
+  const initial = new URLSearchParams({q:history.state?.q || '',filter:history.state?.filter || 'all'});
   $('#query').value = initial.get('q') || '';
   filter = ['all','artist','album','track'].includes(initial.get('filter')) ? initial.get('filter') : 'all';
   function filters() { document.querySelectorAll('[data-filter]').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.filter === filter))); }
@@ -82,7 +110,7 @@ if ($('#searchForm')) {
     if (q.length < 2) { $('#results').replaceChildren(); $('#more').hidden = true; status('Digite pelo menos 2 caracteres.'); return; }
     if (!more) { offset = 0; combined = {artists:[],albums:[],tracks:[]}; $('#results').replaceChildren(); }
     $('#more').hidden = true; $('#results').setAttribute('aria-busy','true'); status('Buscando artistas, álbuns e músicas…');
-    history.replaceState(null,'', '?' + new URLSearchParams({ q, filter }));
+    history.replaceState({ ...history.state, q, filter },'', appAddress);
     try {
       const data = await api('/api/music/search?' + new URLSearchParams({q,filter,offset}), controller.signal);
       if (current !== generation) return;
@@ -101,20 +129,67 @@ if ($('#searchForm')) {
   document.addEventListener('keydown', e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('#query').focus();}});
   if ($('#query').value) search();
 }
-if ($('#profile')) {
-  (async()=>{
-    const id = new URLSearchParams(location.search).get('id');
+let profileVersion = 0;
+async function loadArtist(id) {
+    const version = ++profileVersion;
+    const status = (text, error=false) => { $('#artistStatus').textContent=text; $('#artistStatus').classList.toggle('error',error); };
+    $('#profile').replaceChildren(); status('Carregando perfil…');
     if (!/^\d{1,16}$/.test(id || '')) { status('Escolha um artista pela busca.',true); return; }
     try {
       const data = await api('/api/music/artist/'+id);
+      if(version !== profileVersion) return;
       document.title = `${data.name} — PopReport`;
       $('#profile').innerHTML = `<section class="artist-hero">${photo(data,true)}<div><p>Artista</p><h1>${esc(data.name)}</h1><p>${Number(data.fans || 0).toLocaleString('pt-BR')} fãs no Deezer · ${Number(data.albumCount || 0)} lançamentos</p><button class="pill" data-play="${esc(remember(data))}">Ouvir no Spotify</button></div></section><div class="profile-layout"><section><h2>Sobre ${esc(data.name)}</h2><p class="bio">${esc(data.bio?.text || 'Biografia indisponível. Explore a discografia e as músicas abaixo.')}</p>${data.bio ? `<a class="source" href="${esc(safeUrl(data.bio.url))}" target="_blank" rel="noopener">${esc(data.bio.source)} · Ler artigo original</a>`:''}<h2>Discografia</h2><p class="hint">Álbuns e singles.</p><div class="grid" id="discography">${data.albums.map(card).join('')}</div><p id="albumStatus" role="status">${data.albumsUnavailable ? 'Discografia temporariamente indisponível. Recarregue para tentar novamente.' : !data.albums.length ? 'Nenhum lançamento disponível.' : ''}</p><button class="pill" id="moreAlbums" ${data.hasMore?'':'hidden'}>Mais lançamentos</button></section><aside><h2>Mais ouvidas</h2><p class="hint">Popular no Deezer.</p><div class="tracks">${data.tracks.map(row).join('')}</div>${!data.tracks.length?'<p class="hint">Seleção indisponível para este artista.</p>':''}</aside></div>`;
       let albumOffset = 0;
-      $('#moreAlbums').onclick = async()=>{const b=$('#moreAlbums');b.disabled=true;try{const next=await api(`/api/music/artist/${id}?offset=${albumOffset+24}`);if(next.albumsUnavailable)throw new Error('Não foi possível carregar mais lançamentos. Tente novamente.');albumOffset+=24;$('#discography').insertAdjacentHTML('beforeend',next.albums.map(card).join(''));b.hidden=!next.hasMore||albumOffset>=984;$('#albumStatus').textContent='';}catch(e){$('#albumStatus').textContent=e.message;}finally{b.disabled=false;}};
+      $('#moreAlbums').onclick = async()=>{const b=$('#moreAlbums');b.disabled=true;try{const next=await api(`/api/music/artist/${id}?offset=${albumOffset+24}`);if(version!==profileVersion)return;if(next.albumsUnavailable)throw new Error('Não foi possível carregar mais lançamentos. Tente novamente.');albumOffset+=24;$('#discography').insertAdjacentHTML('beforeend',next.albums.map(card).join(''));b.hidden=!next.hasMore||albumOffset>=984;$('#albumStatus').textContent='';}catch(e){if(version===profileVersion)$('#albumStatus').textContent=e.message;}finally{b.disabled=false;}};
       status('');
-    } catch(e) { status(e.message,true); }
-  })();
+    } catch(e) { if(version===profileVersion)status(e.message,true); }
 }
-if ($('#library')) {
-  api('/api/lista').then(data=>{ $('#library').innerHTML = `<div class="tracks">${data.map((x,i)=>row({ ...x, kind:'track', name:x.track, id:x.spotifyId || x.id },i)).join('')}</div>`; status(data.length ? `${data.length} música${data.length === 1 ? '' : 's'} na sua coleção.` : 'Seu acervo está vazio. Use Adicionar música.'); }).catch(e=>status(e.message,true));
+let collectionVersion=0;
+let recentVersion=0;
+async function loadRecent(){
+  const version=++recentVersion;
+  try{
+    const songs=await api('/api/lista');
+    if(version!==recentVersion)return;
+    $('#recentSongs').innerHTML=songs.slice(0,4).map((x,i)=>row({...x,kind:'track',name:x.track,id:x.spotifyId||x.id},i)).join('');
+    $('#recentCollection').hidden=!songs.length;
+  }catch{$('#recentCollection').hidden=true;}
 }
+async function loadLibrary() {
+  const version=++collectionVersion;
+  const status=(text,error=false)=>{ $('#libraryStatus').textContent=text; $('#libraryStatus').classList.toggle('error',error); };
+  status('Carregando sua coleção…');
+  try {
+    const [songs,collection]=await Promise.all([api('/api/lista'),api('/api/collection')]);
+    if(version!==collectionVersion)return;
+    $('#displayName').value=collection.profile.name;
+    const options=collection.playlists.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+    const current=$('#playlistFilter').value || history.state?.playlistId || '';
+    $('#playlistFilter').innerHTML='<option value="">Todas as músicas</option>'+options;
+    if(collection.playlists.some(p=>String(p.id)===current))$('#playlistFilter').value=current;
+    const chosen=$('#playlistChoice').value;
+    $('#playlistChoice').innerHTML='<option value="">Sem playlist</option>'+options;
+    if(collection.playlists.some(p=>String(p.id)===chosen))$('#playlistChoice').value=chosen;
+    function render(){
+      const playlist=collection.playlists.find(p=>String(p.id)===$('#playlistFilter').value);
+      if(history.state?.screen==='library')history.replaceState({...history.state,playlistId:$('#playlistFilter').value},'',appAddress);
+      const selected=playlist?playlist.songIds.map(id=>songs.find(s=>String(s.id)===String(id))).filter(Boolean):songs;
+      $('#playlistSummary').textContent=playlist?.description || '';
+      $('#collectionTitle').textContent=playlist?.name || 'Sua coleção';
+      $('#library').innerHTML=`<div class="tracks">${selected.map((x,i)=>row({...x,kind:'track',name:x.track,id:x.spotifyId||x.id},i)).join('')}</div>`;
+      status(selected.length?`${selected.length} música${selected.length===1?'':'s'}.`:'Nenhuma música aqui ainda. Use Adicionar música.');
+    }
+    $('#playlistFilter').onchange=render; render();
+  }catch(e){if(version===collectionVersion)status(e.message,true);}
+}
+async function collectionSubmit(form,message,body){
+  const button=form.querySelector('button');button.disabled=true;message.textContent='Salvando…';
+  try{await PopReportAPI.request('/api/collection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});message.textContent='Salvo!';await loadLibrary();}
+  catch(e){message.textContent=e.message;}
+  finally{button.disabled=false;}
+}
+$('#profileForm').onsubmit=e=>{e.preventDefault();collectionSubmit(e.currentTarget,$('#profileMessage'),{action:'profile',name:$('#displayName').value.trim()});};
+$('#playlistForm').onsubmit=e=>{e.preventDefault();collectionSubmit(e.currentTarget,$('#playlistMessage'),{action:'playlist',name:$('#playlistName').value.trim(),description:$('#playlistDescription').value.trim()});};
+
+showScreen(entryState,false);

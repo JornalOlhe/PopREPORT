@@ -1,4 +1,4 @@
-# PopReport
+# popreport
 
 Descoberta musical gratuita: busca por artista/banda, álbum e música, perfis dinâmicos com biografia, discografia, músicas populares e Spotify Embed oficial.
 
@@ -90,3 +90,13 @@ Serviços externos podem mudar ou ficar indisponíveis. Existem timeout e mensag
 - [Biografias Wikipédia / TextExtracts](https://www.mediawiki.org/wiki/API:TextExtracts)
 
 A biografia exibida mantém atribuição à Wikipédia e identificação CC BY-SA; a fonte de cada artigo aparece no perfil. Fotos e capas vêm das fontes musicais e não são redistribuídas no repositório.
+
+## Navegação e modelo da Aula 31
+
+A navegação usa uma única aplicação em index.html; artista.html, library.html e form.html permanecem como entradas compatíveis e normalizam o endereço. Abrir uma tela, pesquisar e usar Voltar/Avançar mantém a raiz do site. A tela atual é registrada no histórico do navegador e restaurada ao atualizar. Links copiados apontam para a raiz; não são links individuais compartilháveis de artista.
+
+O nome visual é popreport. O endereço popreport.github.io depende de possuir uma conta/organização com o nome popreport e o repositório popreport.github.io; renomear o site ou este repositório não altera o proprietário JornalOlhe. A publicação atual continua em https://jornalolhe.github.io/PopREPORT/.
+
+O PDF exige no mínimo cinco entidades; foram mantidas seis principais e duas associativas. A interface utiliza perfil, playlists, músicas, álbuns, artistas e gêneros. No modo local há um usuário demonstrativo compartilhado, sem login, adequado à apresentação acadêmica no computador. O modo Pages guarda perfil, playlists e músicas separadamente em cada navegador.
+
+O SQL completo, a descrição atualizada e o prompt do modelo conceitual estão em database/. Para o modelo físico oficial, siga INSTRUCOES_WORKBENCH.txt; as imagens incluídas são referências e não um arquivo .mwb exportado nesta execução.

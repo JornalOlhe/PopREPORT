@@ -411,7 +411,7 @@ async function spotifyTrackMetadata(trackId) {
   return { track, mainArtist, artistDetails };
 }
 
-async function saveTrackToDatabase({ artistInput, trackInput, parsed }) {
+async function saveTrackToDatabase({ artistInput, trackInput, albumInput, genreInput, parsed }) {
   let meta = null;
   try { meta = await spotifyTrackMetadata(parsed.id); }
   catch (error) {
@@ -434,9 +434,9 @@ async function saveTrackToDatabase({ artistInput, trackInput, parsed }) {
   const artistName = (spotifyArtist?.name || artistInput).trim().slice(0, 120);
   const artistSpotifyId = spotifyArtist?.id || null;
   const artistImage = artistDetails?.images?.[0]?.url || spotifyAlbum?.images?.[0]?.url || null;
-  const genres = (artistDetails?.genres || []).slice(0, 8);
+  const genres = [...new Set([...(artistDetails?.genres || []), ...(genreInput ? [genreInput] : [])])].slice(0, 8);
 
-  const albumName = (spotifyAlbum?.name || 'Faixas cadastradas').trim().slice(0, 180);
+  const albumName = (spotifyAlbum?.name || albumInput || 'Faixas cadastradas').trim().slice(0, 180);
   const albumSpotifyId = spotifyAlbum?.id || null;
   const albumImage = spotifyAlbum?.images?.[0]?.url || null;
   const albumYear = /^\d{4}/.test(spotifyAlbum?.release_date || '') ? Number(spotifyAlbum.release_date.slice(0, 4)) : null;
@@ -536,6 +536,33 @@ async function saveTrackToDatabase({ artistInput, trackInput, parsed }) {
 // API
 // -------------------------
 async function routeApi(req, res, url) {
+  if (url.pathname === '/api/collection') {
+    try {
+      const [visitor] = await dbQuery('SELECT id, nome AS name FROM usuario WHERE email = ? LIMIT 1', ['visitante@popreport.local']);
+      if (!visitor) throw new Error('PROFILE_MISSING');
+      if (req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const name = String(body?.name || '').trim();
+        if (!name || name.length > (body?.action === 'profile' ? 100 : 120)) return sendJson(res, 400, { error: 'Preencha um nome dentro do limite permitido.' });
+        if (body.action === 'profile') await dbQuery('UPDATE usuario SET nome=? WHERE id=?', [name, visitor.id]);
+        else if (body.action === 'playlist') {
+          const description = String(body.description || '').trim();
+          if (description.length > 300) return sendJson(res, 400, { error: 'Use até 300 caracteres na descrição.' });
+          await dbQuery('INSERT INTO playlist (usuario_id,nome,descricao) VALUES (?,?,?)', [visitor.id, name, description || null]);
+        } else return sendJson(res, 400, { error: 'Ação inválida.' });
+      } else if (req.method !== 'GET') return sendJson(res, 405, { error: 'Ação indisponível.' });
+      const playlists = await dbQuery('SELECT id,nome AS name,descricao AS description FROM playlist WHERE usuario_id=? ORDER BY id', [visitor.id]);
+      const membership = await dbQuery('SELECT pm.playlist_id,pm.musica_id FROM playlist_musica pm JOIN playlist p ON p.id=pm.playlist_id WHERE p.usuario_id=? ORDER BY pm.ordem', [visitor.id]);
+      const [profile] = await dbQuery('SELECT nome AS name FROM usuario WHERE id=?', [visitor.id]);
+      return sendJson(res, req.method === 'POST' ? 201 : 200, { profile, playlists: playlists.map(p => ({...p,songIds:membership.filter(m => m.playlist_id===p.id).map(m => m.musica_id)})) });
+    } catch (error) {
+      if (error.code === 'ER_DUP_ENTRY') return sendJson(res, 409, { error: 'Você já tem uma playlist com esse nome.' });
+      if (error.message === 'INVALID_JSON') return sendJson(res, 400, { error: 'Dados inválidos.' });
+      if (error.message === 'BODY_TOO_LARGE') return sendJson(res, 413, { error: 'Dados acima do limite permitido.' });
+      console.error('[Collection]', error.message);
+      return sendJson(res, 503, { error: 'Não foi possível acessar sua coleção. Tente novamente.' });
+    }
+  }
   const resolveMatch = url.pathname.match(/^\/api\/resolve\/(artist|album|track)\/(\d{1,16})$/);
   if (req.method === 'GET' && resolveMatch) {
     try {
@@ -634,12 +661,13 @@ async function routeApi(req, res, url) {
           ROUND(m.duracao_ms / 1000) AS duration,
           m.link_spotify AS spotifyUrl,
           m.spotify_id AS spotifyId,
-          m.criado_em AS createdAt
+          m.criado_em AS createdAt,
+          (SELECT GROUP_CONCAT(g.nome ORDER BY g.nome SEPARATOR ', ') FROM artista_genero ag JOIN genero g ON g.id=ag.genero_id WHERE ag.artista_id=a.id) AS genre
         FROM musica m
         JOIN album al ON al.id = m.album_id
         JOIN artista a ON a.id = al.artista_id
         ORDER BY m.criado_em DESC, m.id DESC
-        LIMIT 50
+        LIMIT 500
       `);
       return sendJson(res, 200, rows.map(row => ({
         ...row,
@@ -658,6 +686,14 @@ async function routeApi(req, res, url) {
       const artist = String(body.artist || '').trim();
       const track = String(body.track || '').trim();
       const parsed = parseSpotifyUrl(body.spotifyUrl);
+      const albumInput = String(body.album || '').trim();
+      const genreInput = String(body.genre || '').trim();
+      const playlistId = body.playlistId == null || body.playlistId === '' ? null : Number(body.playlistId);
+      if (albumInput.length > 180 || genreInput.length > 80 || (playlistId !== null && (!Number.isSafeInteger(playlistId) || playlistId < 1))) return sendJson(res, 400, { error: 'Verifique álbum, gênero e playlist.' });
+      if (playlistId !== null) {
+        const owned = await dbQuery('SELECT p.id FROM playlist p JOIN usuario u ON u.id=p.usuario_id WHERE p.id=? AND u.email=?', [playlistId, 'visitante@popreport.local']);
+        if (!owned.length) return sendJson(res, 400, { error: 'Escolha uma playlist da sua coleção.' });
+      }
 
       if (!artist || !track || !parsed || parsed.type !== 'track') {
         return sendJson(res, 400, { error: 'Preencha artista, música e use uma URL válida de faixa do Spotify.' });
@@ -666,7 +702,21 @@ async function routeApi(req, res, url) {
         return sendJson(res, 400, { error: 'Artista ou música ultrapassou o tamanho permitido.' });
       }
 
-      const item = await saveTrackToDatabase({ artistInput: artist, trackInput: track, parsed });
+      const item = await saveTrackToDatabase({ artistInput: artist, trackInput: track, albumInput, genreInput, parsed });
+      if (playlistId !== null) {
+        const connection = await getDbPool().getConnection();
+        try {
+          await connection.beginTransaction();
+          await connection.execute('SELECT id FROM playlist WHERE id=? FOR UPDATE', [playlistId]);
+          const [[already]] = await connection.execute('SELECT musica_id FROM playlist_musica WHERE playlist_id=? AND musica_id=?', [playlistId, item.id]);
+          if (!already) {
+            const [[position]] = await connection.execute('SELECT COALESCE(MAX(ordem),0)+1 AS nextOrder FROM playlist_musica WHERE playlist_id=?', [playlistId]);
+            await connection.execute('INSERT INTO playlist_musica (playlist_id,musica_id,ordem) VALUES (?,?,?)', [playlistId, item.id, position.nextOrder]);
+          }
+          await connection.commit();
+        } catch (error) { await connection.rollback(); throw error; }
+        finally { connection.release(); }
+      }
       return sendJson(res, 201, item);
     } catch (error) {
       if (error.message === 'INVALID_JSON') return sendJson(res, 400, { error: 'Não foi possível ler os dados enviados. Tente novamente.' });

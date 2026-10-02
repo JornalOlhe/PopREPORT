@@ -2,6 +2,10 @@ const { spawn } = require('node:child_process');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
+const fs = require('node:fs');
+if(fs.existsSync(path.join(root,'.env')))for(const line of fs.readFileSync(path.join(root,'.env'),'utf8').split(/\r?\n/)){
+  const match=line.match(/^([A-Z_]+)=(.*)$/);if(match&&!(match[1] in process.env))process.env[match[1]]=match[2].replace(/^['"]|['"]$/g,'');
+}
 const port = Number(process.env.TEST_PORT || 3118);
 async function run(extra, callback) {
   const child = spawn(process.execPath, ['server.js'], { cwd:root, windowsHide:true, env:{...process.env, PORT:String(port), ...extra}, stdio:'ignore' });
@@ -43,6 +47,20 @@ async function run(extra, callback) {
     const result=await request('/api/lista',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({artist:song.artist,track:song.track,spotifyUrl:song.spotifyUrl})});
     assert.equal(result.status,201);const saved=await result.json();assert.equal(saved.album,song.album);assert.equal(saved.id,song.id);
     console.log('PASS: cadastro idempotente sem API preserva metadados existentes');
+    const collection=await (await request('/api/collection')).json();assert.ok(collection.profile.name);assert.ok(collection.playlists.length);
+    const playlistName='Verificação '+Date.now();
+    const created=await request('/api/collection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'playlist',name:playlistName,description:'Playlist de verificação da integração'})});
+    assert.equal(created.status,201);
+    const playlist=(await created.json()).playlists.find(p=>p.name===playlistName);assert.ok(playlist);
+    const duplicate=await request('/api/collection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'playlist',name:playlistName})});assert.equal(duplicate.status,409);
+    const payload={artist:song.artist,track:song.track,spotifyUrl:song.spotifyUrl,playlistId:playlist.id};
+    for(let i=0;i<2;i++)assert.equal((await request('/api/lista',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).status,201);
+    const updated=await (await request('/api/collection')).json();assert.deepEqual(updated.playlists.find(p=>p.id===playlist.id).songIds,[song.id]);
+    assert.equal((await request('/api/lista',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,playlistId:4294967295})})).status,400);
+    assert.ok(songs.some(s=>s.album&&s.genre));
+    const connection=await require('mysql2/promise').createConnection({host:process.env.DB_HOST||'127.0.0.1',port:Number(process.env.DB_PORT||3306),user:process.env.DB_USER||'root',password:process.env.DB_PASSWORD||'',database:process.env.DB_NAME||'popreport'});
+    try{await connection.execute('DELETE FROM playlist WHERE id=? AND nome=?',[playlist.id,playlistName]);}finally{await connection.end();}
+    console.log('PASS: usuário, playlist, música, álbum, artista e gênero ligados; relação N:N sem duplicação');
   });
   await run({DB_PORT:'1'},async request=>{const state=await(await request('/api/db/status')).json();assert.equal(state.connected,false);assert.equal((await request('/api/lista')).status,503);assert.equal((await request('/')).status,200);console.log('PASS: falha do banco é explícita e não impede a home');});
   console.log('Todos os testes de integração passaram.');

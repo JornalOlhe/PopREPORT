@@ -1,0 +1,22 @@
+Crie uma imagem de um modelo conceitual de banco de dados para o projeto acadêmico musical “popreport”, conforme a Aula 31 de BDAD do IFSP Salto. Use notação Chen: entidades em retângulos, relacionamentos em losangos, atributos em elipses e identificadores sublinhados. Fundo branco, linhas escuras, letras grandes em português, formato horizontal de alta resolução, sem ilustrações decorativas e sem linhas cruzando rótulos.
+
+O sistema permite descobrir artistas, consultar álbuns e músicas, cadastrar faixas por links oficiais do Spotify, classificar artistas por gênero e organizar músicas em playlists de um usuário.
+
+Desenhe exatamente estas seis entidades principais (o requisito é NO MÍNIMO cinco):
+ARTISTA: id (identificador), spotify_id, nome, imagem_url, pagina_local, descricao, criado_em.
+GÊNERO: id (identificador), nome.
+ÁLBUM: id (identificador), spotify_id, titulo, imagem_url, ano_lancamento, link_spotify, criado_em.
+MÚSICA: id (identificador), spotify_id, titulo, duracao_ms, explicita, numero_faixa, link_spotify, criado_em.
+USUÁRIO: id (identificador), nome, email, criado_em.
+PLAYLIST: id (identificador), nome, descricao, criada_em.
+
+Relacionamentos e cardinalidades mínimas/máximas:
+ARTISTA (0,N) — LANÇA — ÁLBUM (1,1): um artista pode ter vários álbuns e cada álbum pertence a um artista principal.
+ÁLBUM (0,N) — CONTÉM — MÚSICA (1,1): um álbum pode ter várias músicas e cada música pertence a um álbum.
+USUÁRIO (0,N) — CRIA — PLAYLIST (1,1): um usuário pode criar várias playlists e cada playlist pertence a um usuário.
+ARTISTA (0,N) — CLASSIFICADO EM — GÊNERO (0,N): relacionamento N:N.
+PLAYLIST (0,N) — INCLUI — MÚSICA (0,N): relacionamento N:N, com atributos ordem e adicionada_em no relacionamento INCLUI.
+
+Organize ARTISTA → ÁLBUM → MÚSICA na parte superior; USUÁRIO → PLAYLIST na parte inferior; GÊNERO à esquerda de ARTISTA. Mostre as cardinalidades próximas de cada extremidade, sem ambiguidade. Não desenhe chaves estrangeiras como atributos no modelo conceitual, pois as ligações já representam os relacionamentos. Não use tipos SQL ou notação de tabelas de modelo físico.
+
+Inclua uma nota pequena abaixo do diagrama: “No modelo físico, os relacionamentos N:N são resolvidos por ARTISTA_GENERO (artista_id, genero_id) e PLAYLIST_MUSICA (playlist_id, musica_id, ordem, adicionada_em).” Não transforme essas duas tabelas associativas em entidades independentes adicionais neste diagrama Chen. Não invente login, pagamento, assinatura, comentários ou outras entidades. Verifique todos os acentos e a legibilidade antes de concluir.

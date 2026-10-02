@@ -11,7 +11,10 @@ form.addEventListener('submit', async event => {
   const payload = {
     artist: document.getElementById('artist').value.trim(),
     track: document.getElementById('track').value.trim(),
-    spotifyUrl: document.getElementById('spotifyUrl').value.trim()
+    spotifyUrl: document.getElementById('spotifyUrl').value.trim(),
+    album: document.getElementById('album').value.trim(),
+    genre: document.getElementById('genre').value.trim(),
+    playlistId: document.getElementById('playlistChoice').value || null
   };
 
   message.textContent = '';

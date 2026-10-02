@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS playlist_musica (
 
 -- ============================================================================
 -- CARGA INICIAL DO CATÁLOGO
--- A home usa estes registros vindos do MySQL.
+-- A seção Da sua coleção e Músicas salvas leem estes registros no modo local.
 -- ============================================================================
 
 INSERT INTO genero (nome) VALUES
