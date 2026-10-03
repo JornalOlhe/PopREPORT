@@ -473,6 +473,74 @@ async function spotifyTrackMetadata(trackId) {
   return { track, mainArtist, artistDetails };
 }
 
+const spotifyTrackCache = new Map();
+
+async function spotifyTracksMetadata(trackIds) {
+  const now = Date.now();
+  const ids = [...new Set(trackIds.filter(id => /^[A-Za-z0-9]{22}$/.test(String(id || ''))))];
+  const found = new Map();
+  const missing = [];
+
+  for (const id of ids) {
+    const cached = spotifyTrackCache.get(id);
+    if (cached && cached.until > now) found.set(id, cached.track);
+    else missing.push(id);
+  }
+
+  for (let i = 0; i < missing.length; i += 50) {
+    const chunk = missing.slice(i, i + 50);
+    const data = await spotifyFetch(`/tracks?ids=${encodeURIComponent(chunk.join(','))}&market=${encodeURIComponent(process.env.SPOTIFY_MARKET || 'BR')}`);
+    for (const track of data.tracks || []) {
+      if (!track?.id) continue;
+      spotifyTrackCache.set(track.id, { track, until: Date.now() + 5 * 60_000 });
+      found.set(track.id, track);
+    }
+  }
+
+  if (spotifyTrackCache.size > 500) {
+    for (const [id, value] of spotifyTrackCache) {
+      if (value.until <= Date.now() || spotifyTrackCache.size > 400) spotifyTrackCache.delete(id);
+      if (spotifyTrackCache.size <= 400) break;
+    }
+  }
+
+  return found;
+}
+
+async function enrichLibraryRowsFromSpotify(rows) {
+  if (!spotifyConfigured()) return rows;
+
+  const ids = rows
+    .filter(row => /^[A-Za-z0-9]{22}$/.test(String(row.spotifyId || '')))
+    .filter(row => !row.artistId || !/^https:\/\//i.test(String(row.image || '')) || Number(row.duration || 0) <= 0)
+    .map(row => row.spotifyId);
+
+  if (!ids.length) return rows;
+
+  try {
+    const metadata = await spotifyTracksMetadata(ids);
+    return rows.map(row => {
+      const track = metadata.get(row.spotifyId);
+      if (!track) return row;
+      const mainArtist = track.artists?.[0];
+      return {
+        ...row,
+        artist: mainArtist?.name || row.artist,
+        artistId: mainArtist?.id || row.artistId,
+        track: track.name || row.track,
+        album: track.album?.name || row.album,
+        image: track.album?.images?.[0]?.url || row.image,
+        duration: Math.round(Number(track.duration_ms || 0) / 1000) || row.duration,
+        spotifyUrl: track.external_urls?.spotify || row.spotifyUrl,
+        metadataSource: 'Spotify'
+      };
+    });
+  } catch (error) {
+    console.warn('[Spotify library enrichment]', error.message);
+    return rows;
+  }
+}
+
 async function saveTrackToDatabase({ artistInput, trackInput, albumInput, genreInput, parsed }) {
   let meta = null;
   try { meta = await spotifyTrackMetadata(parsed.id); }
@@ -777,10 +845,11 @@ async function routeApi(req, res, url) {
         ORDER BY m.criado_em DESC, m.id DESC
         LIMIT 500
       `);
-      return sendJson(res, 200, rows.map(row => ({
+      const publicRows = rows.map(row => ({
         ...row,
         embedUrl: `https://open.spotify.com/embed/track/${row.spotifyId}?utm_source=generator&theme=0`
-      })));
+      }));
+      return sendJson(res, 200, await enrichLibraryRowsFromSpotify(publicRows));
     } catch (error) {
       console.error('[DB GET lista]', error.message);
       return sendJson(res, 503, { error: 'Não foi possível carregar suas músicas. Tente novamente em instantes.' });
