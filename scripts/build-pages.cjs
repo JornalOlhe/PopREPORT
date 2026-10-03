@@ -15,7 +15,7 @@ const files = [
   'script/music-data.js'
 ];
 const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.gif', '.ico']);
-const csp = "default-src 'self'; script-src 'self' https://api.deezer.com; connect-src 'self' https://pt.wikipedia.org; img-src 'self' https:; frame-src https://open.spotify.com; media-src 'self' blob:; object-src 'none'; base-uri 'self'";
+const csp = "default-src 'self'; script-src 'self' https://api.deezer.com; connect-src 'self' https://pt.wikipedia.org; img-src 'self' https:; frame-src https://open.spotify.com; media-src 'self' blob: https:; object-src 'none'; base-uri 'self'";
 
 function copyImageTree(source, target) {
   if (!fs.existsSync(source)) return;
