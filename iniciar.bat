@@ -16,10 +16,10 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist ".env" (
-  copy /y ".env.example" ".env" >nul
-  echo [CONFIG] Arquivo .env criado a partir do .env.example.
-  echo          Preencha DB_PASSWORD e as credenciais SPOTIFY_CLIENT_ID/SPOTIFY_CLIENT_SECRET.
+if not exist ".env.local" (
+  copy /y ".env" ".env.local" >nul
+  echo [CONFIG] Arquivo .env.local criado.
+  echo          Se precisar, preencha DB_PASSWORD e as credenciais do Spotify nele.
   echo.
 )
 
@@ -40,7 +40,7 @@ call npm run db:setup
 if errorlevel 1 (
   echo.
   echo [AVISO] O banco nao foi preparado.
-  echo Verifique se o MySQL esta iniciado e confira DB_USER/DB_PASSWORD no .env.
+  echo Verifique se o MySQL esta iniciado e confira DB_USER/DB_PASSWORD no .env.local.
   echo O site ainda vai abrir, mas o cadastro no banco ficara indisponivel.
   echo.
 )
