@@ -374,6 +374,7 @@ function mapTrack(track) {
     duration: Math.round(Number(track.duration_ms || 0) / 1000),
     durationMs: track.duration_ms || 0,
     explicit: Boolean(track.explicit),
+    previewUrl: track.preview_url || '',
     spotifyUrl: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`,
     url: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`
   };
@@ -953,7 +954,7 @@ function serveStatic(req, res, url) {
 const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https:; frame-src https://open.spotify.com; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https:; frame-src https://open.spotify.com; media-src 'self' blob: https:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
   if (!['127.0.0.1', 'localhost', '[::1]'].includes((req.headers.host || '').replace(/:\d+$/, ''))) { res.writeHead(403); return res.end('Host inválido'); }
   if (req.method === 'POST' && (req.headers['sec-fetch-site'] === 'cross-site' || (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`))) return sendJson(res, 403, { error: 'Origem não permitida.' });
   let url;
