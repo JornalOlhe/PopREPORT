@@ -310,12 +310,17 @@ async function getSpotifyToken() {
   return spotify.token;
 }
 
-async function spotifyFetch(endpoint) {
+async function spotifyFetch(endpoint, retryAuth = true) {
   const token = await getSpotifyToken();
   const response = await fetch(`https://api.spotify.com/v1${endpoint}`, {
     signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS),
     headers: { Authorization: `Bearer ${token}` }
   });
+  if (response.status === 401 && retryAuth) {
+    spotify.token = null;
+    spotify.expiresAt = 0;
+    return spotifyFetch(endpoint, false);
+  }
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`Spotify request failed (${response.status}): ${text.slice(0, 220)}`);
@@ -331,7 +336,8 @@ function mapArtist(artist) {
     image: artist.images?.[0]?.url || '',
     genres: (artist.genres || []).slice(0, 3),
     followers: artist.followers?.total || 0,
-    spotifyUrl: artist.external_urls?.spotify || `https://open.spotify.com/artist/${artist.id}`
+    spotifyUrl: artist.external_urls?.spotify || `https://open.spotify.com/artist/${artist.id}`,
+    url: artist.external_urls?.spotify || `https://open.spotify.com/artist/${artist.id}`
   };
 }
 
@@ -378,7 +384,7 @@ async function spotifySearch(q, filter, offset = 0) {
   const params = new URLSearchParams({
     q,
     type: types.join(','),
-    limit: '10',
+    limit: '12',
     offset: String(Math.max(0, Math.min(1000, Number(offset) || 0))),
     market: process.env.SPOTIFY_MARKET || 'BR'
   });
@@ -477,11 +483,13 @@ async function saveTrackToDatabase({ artistInput, trackInput, albumInput, genreI
   const spotifyTrack = meta?.track;
   // A temporary metadata outage must never replace an existing album or duration.
   if (!spotifyTrack) {
-    const existing = await dbQuery(`SELECT m.id, m.titulo AS track, a.nome AS artist,
-      al.titulo AS album, m.link_spotify AS spotifyUrl, m.criado_em AS createdAt
+    const existing = await dbQuery(`SELECT m.id, m.titulo AS track, a.nome AS artist, a.spotify_id AS artistId,
+      al.titulo AS album, al.imagem_url AS image, ROUND(m.duracao_ms / 1000) AS duration,
+      m.link_spotify AS spotifyUrl, m.criado_em AS createdAt,
+      (SELECT GROUP_CONCAT(g.nome ORDER BY g.nome SEPARATOR ', ') FROM artista_genero ag JOIN genero g ON g.id=ag.genero_id WHERE ag.artista_id=a.id) AS genre
       FROM musica m JOIN album al ON al.id=m.album_id JOIN artista a ON a.id=al.artista_id
       WHERE m.spotify_id=? LIMIT 1`, [parsed.id]);
-    if (existing.length) return { ...existing[0], persisted: true, embedUrl: `https://open.spotify.com/embed/track/${parsed.id}` };
+    if (existing.length) return { ...existing[0], spotifyId: parsed.id, persisted: true, embedUrl: `https://open.spotify.com/embed/track/${parsed.id}` };
   }
   const spotifyArtist = meta?.mainArtist;
   const artistDetails = meta?.artistDetails;
@@ -572,9 +580,14 @@ async function saveTrackToDatabase({ artistInput, trackInput, albumInput, genreI
 
     return {
       id: songRow.id,
+      spotifyId: parsed.id,
       artist: artistName,
+      artistId: artistSpotifyId,
       track: trackName,
       album: albumName,
+      image: albumImage,
+      duration: Math.round(durationMs / 1000),
+      genre: genres.join(', '),
       spotifyUrl: trackUrl,
       embedUrl: `https://open.spotify.com/embed/track/${parsed.id}?utm_source=generator&theme=0`,
       createdAt: songRow.criado_em,
@@ -701,6 +714,31 @@ async function routeApi(req, res, url) {
     return sendJson(res, 200, { configured: spotifyConfigured(), market: process.env.SPOTIFY_MARKET || 'BR' });
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/spotify/track') {
+    const parsed = parseSpotifyUrl(url.searchParams.get('url'));
+    if (!parsed || parsed.type !== 'track') return sendJson(res, 400, { error: 'Cole um link válido de faixa do Spotify.' });
+    if (!spotifyConfigured()) return sendJson(res, 503, { error: 'Configure SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no .env para preencher os dados automaticamente.' });
+    try {
+      const { track, mainArtist, artistDetails } = await spotifyTrackMetadata(parsed.id);
+      return sendJson(res, 200, {
+        spotifyId: track.id,
+        spotifyUrl: track.external_urls?.spotify || parsed.canonical,
+        track: track.name || '',
+        artist: mainArtist?.name || '',
+        artistId: mainArtist?.id || '',
+        album: track.album?.name || '',
+        image: track.album?.images?.[0]?.url || artistDetails?.images?.[0]?.url || '',
+        duration: Math.round(Number(track.duration_ms || 0) / 1000),
+        explicit: Boolean(track.explicit),
+        genre: (artistDetails?.genres || []).slice(0,3).join(', '),
+        source: 'Spotify'
+      });
+    } catch (error) {
+      console.error('[Spotify track metadata]', error.message);
+      return sendJson(res, 502, { error: 'Não foi possível carregar os dados dessa faixa no Spotify agora.' });
+    }
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/spotify/search') {
     const q = String(url.searchParams.get('q') || '').trim();
     const filter = String(url.searchParams.get('filter') || 'all');
@@ -724,6 +762,7 @@ async function routeApi(req, res, url) {
         SELECT
           m.id,
           a.nome AS artist,
+          a.spotify_id AS artistId,
           m.titulo AS track,
           al.titulo AS album,
           al.imagem_url AS image,

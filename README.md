@@ -1,12 +1,12 @@
 # popreport
 
-Descoberta musical gratuita: busca por artista/banda, álbum e música, perfis dinâmicos com biografia, discografia, músicas populares e Spotify Embed oficial.
+Descoberta musical gratuita com identidade visual própria, busca por artista/banda, álbum e música, perfis dinâmicos, discografia, faixas populares, playlists e Spotify Embed oficial. Na versão local, quando as credenciais estão configuradas, a busca e os perfis usam diretamente a Spotify Web API.
 
 ## Site online
 
 **https://jornalolhe.github.io/PopREPORT/**
 
-A publicação usa GitHub Pages, sem servidor contratado e sem credenciais Spotify. Os metadados vêm da API pública do Deezer; as biografias vêm da Wikipédia quando há uma correspondência identificável. O player recebe um link oficial do Spotify.
+A publicação usa GitHub Pages, sem servidor contratado e sem expor credenciais Spotify. Por isso, no Pages a busca usa a fonte pública Deezer como fallback seguro; as biografias vêm da Wikipédia quando há uma correspondência identificável. O player continua sendo o Embed oficial do Spotify.
 
 No site online, cada visitante salva sua própria coleção neste navegador. Os cadastros não são compartilhados e não sincronizam com o MySQL. Limpar os dados do navegador remove essa coleção. A interface informa isso antes de salvar. Áudios próprios/licenciados também ficam apenas no navegador.
 
@@ -49,14 +49,15 @@ Preservada para o projeto acadêmico. Requisitos: Node.js 22+ recomendado, MySQL
 1. Instale as dependências: npm install.
 2. Copie .env.example como .env.
 3. Preencha DB_PASSWORD com a senha do MySQL instalado. Os padrões são DB_HOST=127.0.0.1, DB_PORT=3306, DB_USER=root e DB_NAME=popreport.
-4. Execute npm run db:setup e npm start.
-5. Abra http://127.0.0.1:3000.
+4. Para busca e perfis diretamente do Spotify, preencha SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no .env. O segredo nunca deve ser enviado ao GitHub.
+5. Execute npm run db:setup e npm start.
+6. Abra http://127.0.0.1:3000.
 
 No PowerShell, use npm.cmd se houver bloqueio de scripts. iniciar.bat também instala, prepara o banco e inicia o servidor. O setup não muda a senha da sua instalação nem apaga tabelas existentes.
 
-O .env privado anterior foi mantido apenas na cópia local entregue em ZIP, fora deste repositório público. As credenciais Spotify são opcionais; o servidor pode usá-las para localizar links e enriquecer cadastros. A busca principal e o Embed por link funcionam sem elas.
+O .env real é local e fica fora do repositório público. O iniciar.bat cria esse arquivo a partir do .env.example quando ele ainda não existe. Com SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET configurados, a busca principal, os perfis de artista, fotos, seguidores, discografia, faixas populares e o preenchimento do formulário vêm diretamente do Spotify. Sem as credenciais, a aplicação local mantém o fallback público para descoberta e o Spotify Embed por link continua disponível.
 
-No modo local, Músicas salvas lê o MySQL e o formulário grava com consultas parametrizadas e transação. Em indisponibilidade de metadados, o cadastro preserva os dados já existentes. O servidor escuta apenas em 127.0.0.1 e permite somente arquivos públicos definidos explicitamente.
+No modo local, Músicas salvas lê o MySQL e o formulário grava com consultas parametrizadas e transação. Ao colar um link de faixa, o formulário tenta preencher artista, música, álbum e gênero diretamente pelo Spotify. Em indisponibilidade de metadados, o cadastro preserva os dados já existentes. O servidor escuta apenas em 127.0.0.1 e permite somente arquivos públicos definidos explicitamente.
 
 ## Estrutura
 
@@ -78,7 +79,7 @@ Os diagramas e o modelo conceitual editável estão em database/. O .mwb não es
 
 ## Verificação
 
-npm run check valida a sintaxe. npm test executa os testes do servidor e requer o MySQL configurado e internet. A publicação estática foi testada no navegador com URL sob /PopREPORT/, busca, perfil, biografia, cadastro, persistência após recarregar e Spotify Embed. Consulte VERIFICACAO.md.
+npm run check valida a sintaxe. npm test executa os testes do servidor e requer o MySQL configurado e internet. Quando credenciais Spotify reais estão presentes, os testes também podem validar a busca nativa, o perfil por ID de 22 caracteres e a leitura de metadados de uma faixa. A publicação estática mantém o fallback sem segredos e o Spotify Embed. Consulte VERIFICACAO.md.
 
 Serviços externos podem mudar ou ficar indisponíveis. Existem timeout e mensagens de falha; disponibilidade permanente não é prometida.
 

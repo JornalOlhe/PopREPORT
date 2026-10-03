@@ -292,3 +292,46 @@ footer{margin-top:46px}
   [data-screen-view]:not([hidden]),.hero>*,.card,.track,.form-card,.artist-hero{animation:none!important}
   .card:hover{transform:none}
 }
+
+/* === POPREPORT V5 FINAL POLISH === */
+.spotify-auto-hint{
+  margin:9px 0 2px;
+  color:#d9b9c0;
+  font-size:12px;
+}
+.form-message,#profileMessage,#playlistMessage{
+  min-height:24px;
+  transition:opacity .2s ease,color .2s ease;
+}
+.form-message.success,#profileMessage.success,#playlistMessage.success{
+  color:var(--success);
+}
+.form-message.error,#profileMessage.error,#playlistMessage.error{
+  color:var(--danger);
+}
+#songPreview{
+  margin-top:26px;
+  padding-top:22px;
+  border-top:1px solid var(--line);
+  animation:popreport-enter .35s cubic-bezier(.2,.75,.2,1) both;
+}
+#songPreview iframe{
+  display:block;
+  width:100%;
+  margin:14px 0 18px;
+  border:0;
+  border-radius:14px;
+  background:var(--panel-2);
+}
+[aria-busy="true"]{
+  opacity:.72;
+  transition:opacity .2s ease;
+}
+.back{
+  transition:color .2s ease,transform .2s ease;
+}
+.back:hover{
+  color:var(--text);
+  transform:translateX(-3px);
+  text-decoration:none;
+}
