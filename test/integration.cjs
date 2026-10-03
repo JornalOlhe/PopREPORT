@@ -28,8 +28,13 @@ async function run(extra, callback) {
     console.log('PASS: arquivos privados bloqueados');
     for(const query of ['q=x','q=abc&filter=invalid','q=abc&offset=-1','q=abc&offset=1.5','q='+ 'x'.repeat(101)]) assert.equal((await request('/api/music/search?'+query)).status,400);
     for(const link of ['https://evil.example/track/43iIQbw5hx986dUEZbr3eN','http://open.spotify.com/track/43iIQbw5hx986dUEZbr3eN','https://open.spotify.com/track/short','javascript:alert(1)']) assert.equal((await request('/api/embed?url='+encodeURIComponent(link))).status,400);
+    const validTrackUrl='https://open.spotify.com/track/46rPcSaUj5jHxX60xWmsMD';
     const embed=await (await request('/api/embed?url='+encodeURIComponent('https://open.spotify.com/intl-pt/track/43iIQbw5hx986dUEZbr3eN?si=test'))).json();
     assert.equal(embed.url,'https://open.spotify.com/embed/track/43iIQbw5hx986dUEZbr3eN');
+    assert.equal((await request('/api/spotify/track?url='+encodeURIComponent('https://open.spotify.com/track/short'))).status,400);
+    assert.equal((await request('/api/spotify/track?url='+encodeURIComponent(validTrackUrl))).status,503);
+    assert.equal((await request('/?screen=artist&id=12369444')).status,200);
+    assert.equal((await request('/Imagens/fallback.svg')).status,200);
     assert.equal((await request('/api/lista',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://evil.example'},body:'{}'})).status,403);
     assert.equal((await request('/api/lista',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,400);
     assert.equal((await request('/api/lista',{method:'POST',headers:{'Content-Type':'application/json'},body:'null'})).status,400);
@@ -63,5 +68,35 @@ async function run(extra, callback) {
     console.log('PASS: usuário, playlist, música, álbum, artista e gênero ligados; relação N:N sem duplicação');
   });
   await run({DB_PORT:'1'},async request=>{const state=await(await request('/api/db/status')).json();assert.equal(state.connected,false);assert.equal((await request('/api/lista')).status,503);assert.equal((await request('/')).status,200);console.log('PASS: falha do banco é explícita e não impede a home');});
+
+  if(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET){
+    await run({},async request=>{
+      const searchResponse=await request('/api/music/search?'+new URLSearchParams({q:'Laufey',filter:'artist'}));
+      assert.equal(searchResponse.status,200);
+      const search=await searchResponse.json();
+      assert.equal(search.source,'Spotify');
+      const artist=search.artists.find(item=>/^[A-Za-z0-9]{22}$/.test(item.id));
+      assert.ok(artist);
+      assert.ok(artist.spotifyUrl?.startsWith('https://open.spotify.com/artist/'));
+      const profileResponse=await request('/api/music/artist/'+artist.id);
+      assert.equal(profileResponse.status,200);
+      const profile=await profileResponse.json();
+      assert.equal(profile.source,'Spotify');
+      assert.equal(profile.id,artist.id);
+      assert.ok(Array.isArray(profile.albums));
+      assert.ok(Array.isArray(profile.tracks));
+      const metadataResponse=await request('/api/spotify/track?url='+encodeURIComponent('https://open.spotify.com/track/46rPcSaUj5jHxX60xWmsMD'));
+      assert.equal(metadataResponse.status,200);
+      const metadata=await metadataResponse.json();
+      assert.equal(metadata.source,'Spotify');
+      assert.equal(metadata.spotifyId,'46rPcSaUj5jHxX60xWmsMD');
+      assert.ok(metadata.track);
+      assert.ok(metadata.artist);
+      console.log('PASS: busca, perfil e metadados diretos do Spotify');
+    });
+  } else {
+    console.log('SKIP: credenciais Spotify ausentes; testes diretos da Spotify Web API não executados');
+  }
+
   console.log('Todos os testes de integração passaram.');
 })().catch(error=>{console.error(error.message);process.exitCode=1;});
