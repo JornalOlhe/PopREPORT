@@ -1,15 +1,39 @@
 'use strict';
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const safeUrl = s => { try { const u = new URL(s); return u.protocol === 'https:' ? u.href : ''; } catch { return ''; } };
+const safeUrl = value => {
+  const raw = String(value ?? '').trim();
+  const local = raw.replace(/^\.?\//, '');
+  if (/^Imagens\/[A-Za-z0-9_.-]+\.(?:png|jpe?g|webp|svg)$/i.test(local)) return local;
+  try { const u = new URL(raw); return u.protocol === 'https:' ? u.href : ''; } catch { return ''; }
+};
 const playIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
 const items = new Map();
 const originalPath=location.pathname;
 const originalQuery=new URLSearchParams(location.search);
 const appAddress=originalPath.replace(/[^/]*\.html$/, '') || '/';
-const entryScreen=({ 'artist.html':'artist','library.html':'library','form.html':'form' })[originalPath.split('/').pop()] || 'discover';
-const entryState=history.state?.screen ? history.state : {screen:entryScreen,id:originalQuery.get('id'),q:originalQuery.get('q')||'',filter:originalQuery.get('filter')||'all'};
-history.replaceState(entryState,'',appAddress);
+const validScreens = new Set(['discover','artist','library','form']);
+const requestedScreen = originalQuery.get('screen');
+const entryScreen=validScreens.has(requestedScreen) ? requestedScreen : (({ 'artist.html':'artist','library.html':'library','form.html':'form' })[originalPath.split('/').pop()] || 'discover');
+const entryState=history.state?.screen ? history.state : {
+  screen:entryScreen,
+  id:originalQuery.get('id'),
+  q:originalQuery.get('q')||'',
+  filter:originalQuery.get('filter')||'all',
+  playlistId:originalQuery.get('playlist')||''
+};
+function stateUrl(state={}){
+  const params=new URLSearchParams();
+  const screen=validScreens.has(state.screen)?state.screen:'discover';
+  if(screen!=='discover')params.set('screen',screen);
+  if(screen==='artist'&&state.id)params.set('id',state.id);
+  if(state.q)params.set('q',state.q);
+  if(state.filter&&state.filter!=='all')params.set('filter',state.filter);
+  if(screen==='library'&&state.playlistId)params.set('playlist',state.playlistId);
+  const query=params.toString();
+  return appAddress+(query?`?${query}`:'');
+}
+history.replaceState(entryState,'',stateUrl(entryState));
 function showScreen(state,focus=true){
   const screen=['discover','artist','library','form'].includes(state?.screen)?state.screen:'discover';
   document.querySelectorAll('[data-screen-view]').forEach(s=>s.hidden=s.dataset.screenView!==screen);
@@ -28,7 +52,7 @@ document.addEventListener('click',e=>{
   if(!link||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button)return;
   e.preventDefault();
   const state={...history.state,screen:link.dataset.artist?'artist':link.dataset.screen,id:link.dataset.artist||null};
-  history.pushState(state,'',appAddress);showScreen(state);
+  history.pushState(state,'',stateUrl(state));showScreen(state);
 });
 window.addEventListener('popstate',()=>showScreen(history.state));
 
@@ -110,7 +134,8 @@ if ($('#searchForm')) {
     if (q.length < 2) { $('#results').replaceChildren(); $('#more').hidden = true; status('Digite pelo menos 2 caracteres.'); return; }
     if (!more) { offset = 0; combined = {artists:[],albums:[],tracks:[]}; $('#results').replaceChildren(); }
     $('#more').hidden = true; $('#results').setAttribute('aria-busy','true'); status('Buscando artistas, álbuns e músicas…');
-    history.replaceState({ ...history.state, q, filter },'', appAddress);
+    const nextState={ ...history.state, q, filter, screen:'discover' };
+    history.replaceState(nextState,'',stateUrl(nextState));
     try {
       const data = await api('/api/music/search?' + new URLSearchParams({q,filter,offset}), controller.signal);
       if (current !== generation) return;
@@ -173,7 +198,10 @@ async function loadLibrary() {
     if(collection.playlists.some(p=>String(p.id)===chosen))$('#playlistChoice').value=chosen;
     function render(){
       const playlist=collection.playlists.find(p=>String(p.id)===$('#playlistFilter').value);
-      if(history.state?.screen==='library')history.replaceState({...history.state,playlistId:$('#playlistFilter').value},'',appAddress);
+      if(history.state?.screen==='library'){
+        const nextState={...history.state,playlistId:$('#playlistFilter').value};
+        history.replaceState(nextState,'',stateUrl(nextState));
+      }
       const selected=playlist?playlist.songIds.map(id=>songs.find(s=>String(s.id)===String(id))).filter(Boolean):songs;
       $('#playlistSummary').textContent=playlist?.description || '';
       $('#collectionTitle').textContent=playlist?.name || 'Sua coleção';
