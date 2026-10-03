@@ -310,12 +310,17 @@ async function getSpotifyToken() {
   return spotify.token;
 }
 
-async function spotifyFetch(endpoint) {
+async function spotifyFetch(endpoint, retryAuth = true) {
   const token = await getSpotifyToken();
   const response = await fetch(`https://api.spotify.com/v1${endpoint}`, {
     signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS),
     headers: { Authorization: `Bearer ${token}` }
   });
+  if (response.status === 401 && retryAuth) {
+    spotify.token = null;
+    spotify.expiresAt = 0;
+    return spotifyFetch(endpoint, false);
+  }
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`Spotify request failed (${response.status}): ${text.slice(0, 220)}`);
