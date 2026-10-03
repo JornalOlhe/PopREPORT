@@ -31,6 +31,7 @@ async function hydrateFromSpotify() {
   }
 }
 
+spotifyInput.addEventListener('input', () => { metadataVersion++; });
 spotifyInput.addEventListener('change', hydrateFromSpotify);
 spotifyInput.addEventListener('paste', () => setTimeout(hydrateFromSpotify, 0));
 
