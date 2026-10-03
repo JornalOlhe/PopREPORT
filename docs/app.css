@@ -335,3 +335,15 @@ footer{margin-top:46px}
   transform:translateX(-3px);
   text-decoration:none;
 }
+
+/* === CATALOG PREVIEW AUDIO === */
+#embed audio{
+  display:block;
+  width:100%;
+  margin:16px 0 10px;
+}
+#embed iframe{
+  width:100%;
+  border:0;
+  border-radius:14px;
+}
