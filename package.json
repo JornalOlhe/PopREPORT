@@ -1,8 +1,8 @@
 {
   "name": "popreport-web-bd",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "private": true,
-  "description": "PopReport - descoberta gratuita, Spotify Embed e acervo MySQL",
+  "description": "PopReport - descoberta musical com Spotify, playlists e acervo MySQL",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
