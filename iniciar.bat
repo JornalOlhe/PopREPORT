@@ -16,6 +16,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
+if not exist ".env" (
+  copy /y ".env.example" ".env" >nul
+  echo [CONFIG] Arquivo .env criado a partir do .env.example.
+  echo          Preencha DB_PASSWORD e as credenciais SPOTIFY_CLIENT_ID/SPOTIFY_CLIENT_SECRET.
+  echo.
+)
+
 if not exist "node_modules\mysql2\package.json" (
   echo [1/3] Instalando dependencias do projeto...
   call npm install
