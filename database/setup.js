@@ -4,16 +4,18 @@ const mysql = require('mysql2/promise');
 
 const ROOT = path.resolve(__dirname, '..');
 function loadEnv() {
-  const file = path.join(ROOT, '.env');
-  if (!fs.existsSync(file)) return;
-  for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const value = line.trim();
-    if (!value || value.startsWith('#')) continue;
-    const i = value.indexOf('=');
-    if (i < 1) continue;
-    const key = value.slice(0, i).trim();
-    const val = value.slice(i + 1).trim();
-    if (!(key in process.env)) process.env[key] = val;
+  for (const fileName of ['.env.local', '.env']) {
+    const file = path.join(ROOT, fileName);
+    if (!fs.existsSync(file)) continue;
+    for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+      const value = line.trim();
+      if (!value || value.startsWith('#')) continue;
+      const i = value.indexOf('=');
+      if (i < 1) continue;
+      const key = value.slice(0, i).trim();
+      const val = value.slice(i + 1).trim();
+      if (!(key in process.env)) process.env[key] = val;
+    }
   }
 }
 loadEnv();
