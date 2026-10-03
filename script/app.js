@@ -117,7 +117,7 @@ if ($('#searchForm')) {
       for (const key of ['artists','albums','tracks']) { const unique = new Map([...combined[key],...data[key]].map(x=>[x.id,x])); combined[key] = [...unique.values()]; }
       $('#results').innerHTML = ['artists','albums','tracks'].map(key => combined[key].length ? `<section><h2>${{artists:'Artistas',albums:'Álbuns',tracks:'Músicas'}[key]}</h2><div class="${key==='tracks'?'tracks':'grid'}">${combined[key].map(key==='tracks'?row:card).join('')}</div></section>` : '').join('');
       const count = Object.values(combined).reduce((n,a)=>n+a.length,0);
-      status(count ? `${count} resultados para “${q}”` : 'Nenhum resultado. Tente outro nome ou filtro.');
+      status(count ? `${count} resultados para “${q}”${data.source ? ` · ${data.source}` : ''}` : 'Nenhum resultado. Tente outro nome ou filtro.');
       $('#more').hidden = !data.hasMore || offset >= 996;
     } catch(e) { if (current === generation && e.name !== 'AbortError') { status(e.message,true); if (more) offset = Math.max(0,offset-12); } }
     finally { if(current === generation) $('#results').setAttribute('aria-busy','false'); }
@@ -134,15 +134,15 @@ async function loadArtist(id) {
     const version = ++profileVersion;
     const status = (text, error=false) => { $('#artistStatus').textContent=text; $('#artistStatus').classList.toggle('error',error); };
     $('#profile').replaceChildren(); status('Carregando perfil…');
-    if (!/^\d{1,16}$/.test(id || '')) { status('Escolha um artista pela busca.',true); return; }
+    if (!/^(?:\d{1,16}|[A-Za-z0-9]{22})$/.test(id || '')) { status('Escolha um artista pela busca.',true); return; }
     try {
       const data = await api('/api/music/artist/'+id);
       if(version !== profileVersion) return;
       document.title = `${data.name} — PopReport`;
-      $('#profile').innerHTML = `<section class="artist-hero">${photo(data,true)}<div><p>Artista</p><h1>${esc(data.name)}</h1><p>${Number(data.fans || 0).toLocaleString('pt-BR')} fãs no Deezer · ${Number(data.albumCount || 0)} lançamentos</p><button class="pill" data-play="${esc(remember(data))}">Ouvir no Spotify</button></div></section><div class="profile-layout"><section><h2>Sobre ${esc(data.name)}</h2><p class="bio">${esc(data.bio?.text || 'Biografia indisponível. Explore a discografia e as músicas abaixo.')}</p>${data.bio ? `<a class="source" href="${esc(safeUrl(data.bio.url))}" target="_blank" rel="noopener">${esc(data.bio.source)} · Ler artigo original</a>`:''}<h2>Discografia</h2><p class="hint">Álbuns e singles.</p><div class="grid" id="discography">${data.albums.map(card).join('')}</div><p id="albumStatus" role="status">${data.albumsUnavailable ? 'Discografia temporariamente indisponível. Recarregue para tentar novamente.' : !data.albums.length ? 'Nenhum lançamento disponível.' : ''}</p><button class="pill" id="moreAlbums" ${data.hasMore?'':'hidden'}>Mais lançamentos</button></section><aside><h2>Mais ouvidas</h2><p class="hint">Popular no Deezer.</p><div class="tracks">${data.tracks.map(row).join('')}</div>${!data.tracks.length?'<p class="hint">Seleção indisponível para este artista.</p>':''}</aside></div>`;
+      $('#profile').innerHTML = `<section class="artist-hero">${photo(data,true)}<div><p>Artista</p><h1>${esc(data.name)}</h1><p>${Number(data.followers ?? data.fans ?? 0).toLocaleString('pt-BR')} ${data.source === 'Spotify' ? 'seguidores' : 'fãs'}${data.source ? ` · Dados do ${esc(data.source)}` : ''} · ${Number(data.albumCount || 0)} lançamentos</p><button class="pill" data-play="${esc(remember(data))}">Ouvir no Spotify</button></div></section><div class="profile-layout"><section><h2>Sobre ${esc(data.name)}</h2><p class="bio">${esc(data.bio?.text || 'Biografia indisponível. Explore a discografia e as músicas abaixo.')}</p>${data.bio ? `<a class="source" href="${esc(safeUrl(data.bio.url))}" target="_blank" rel="noopener">${esc(data.bio.source)} · Ler artigo original</a>`:''}<h2>Discografia</h2><p class="hint">Álbuns e singles.</p><div class="grid" id="discography">${data.albums.map(card).join('')}</div><p id="albumStatus" role="status">${data.albumsUnavailable ? 'Discografia temporariamente indisponível. Recarregue para tentar novamente.' : !data.albums.length ? 'Nenhum lançamento disponível.' : ''}</p><button class="pill" id="moreAlbums" ${data.hasMore?'':'hidden'}>Mais lançamentos</button></section><aside><h2>Mais ouvidas</h2><p class="hint">Popular no ${esc(data.source || 'Spotify')}.</p><div class="tracks">${data.tracks.map(row).join('')}</div>${!data.tracks.length?'<p class="hint">Seleção indisponível para este artista.</p>':''}</aside></div>`;
       let albumOffset = 0;
       $('#moreAlbums').onclick = async()=>{const b=$('#moreAlbums');b.disabled=true;try{const next=await api(`/api/music/artist/${id}?offset=${albumOffset+24}`);if(version!==profileVersion)return;if(next.albumsUnavailable)throw new Error('Não foi possível carregar mais lançamentos. Tente novamente.');albumOffset+=24;$('#discography').insertAdjacentHTML('beforeend',next.albums.map(card).join(''));b.hidden=!next.hasMore||albumOffset>=984;$('#albumStatus').textContent='';}catch(e){if(version===profileVersion)$('#albumStatus').textContent=e.message;}finally{b.disabled=false;}};
-      status('');
+      status(data.source ? `Perfil carregado do ${data.source}.` : '');
     } catch(e) { if(version===profileVersion)status(e.message,true); }
 }
 let collectionVersion=0;

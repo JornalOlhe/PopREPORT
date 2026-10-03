@@ -78,6 +78,6 @@ async function detail(kind, id, offset = 0) {
   const data = await dz(`/${kind}/${id}`);
   return kind === 'album' ? { ...album(data), tracks: (data.tracks?.data || []).map(t => track({ ...t, album: data })), totalTracks: data.nb_tracks } : track(data);
 }
-if (typeof module !== 'undefined' && module.exports) module.exports = { search, detail };
-else root.PopReportMusic = { search, detail };
+if (typeof module !== 'undefined' && module.exports) module.exports = { search, detail, biography };
+else root.PopReportMusic = { search, detail, biography };
 })(globalThis);
