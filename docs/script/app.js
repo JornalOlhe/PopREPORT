@@ -72,54 +72,122 @@ function row(x, i) { return `<article class="track"><span class="number">${i + 1
 function status(text, error = false) { $('#status').textContent = text; $('#status').classList.toggle('error',error); }
 document.addEventListener('click', e => { const button = e.target.closest('[data-play]'); if (button) openPlayer(items.get(button.dataset.play)); });
 
-// Native dialog provides focus trapping, Escape and focus restoration.
-$('#playerRoot').innerHTML = `<dialog id="player" aria-labelledby="playerTitle"><button class="close" aria-label="Fechar player">×</button><h2 id="playerTitle">Ouvir no PopReport</h2><p class="hint">Player oficial do Spotify. A reprodução completa depende da sua conta, região e das regras do Spotify; pode ser limitada a uma prévia.</p><div id="embed"></div><p id="playerMessage" role="status"></p><a id="spotifySearch" class="source" target="_blank" rel="noopener">Encontrar no Spotify</a><form id="embedForm"><label for="spotifyLink">Link do Spotify</label><input id="spotifyLink" type="url" required placeholder="https://open.spotify.com/track/…"><button class="primary">Abrir player oficial</button></form><details><summary>Ouvir um arquivo próprio ou licenciado</summary><p class="hint">O arquivo fica apenas neste navegador. Use áudio próprio, domínio público ou uma licença compatível.</p><label><input type="checkbox" id="rights"> Tenho os direitos ou a licença para usar este áudio.</label><label for="audioFile">Arquivo de áudio</label><input id="audioFile" type="file" accept="audio/*" disabled><audio id="localAudio" controls hidden></audio><p id="audioMessage" role="status" class="hint"></p></details></dialog>`;
+// Player do catálogo: usa a prévia fornecida pela fonte musical quando existir.
+// O campo para colar link do Spotify fica somente no formulário de adicionar música.
+$('#playerRoot').innerHTML = `<dialog id="player" aria-labelledby="playerTitle"><button class="close" aria-label="Fechar player">×</button><h2 id="playerTitle">Ouvir no PopReport</h2><p class="hint">Prévia da faixa quando disponível. Caso contrário, o PopReport abre o player oficial do Spotify.</p><div id="embed"></div><p id="playerMessage" role="status"></p><a id="spotifySearch" class="source" target="_blank" rel="noopener">Abrir no Spotify</a><details><summary>Ouvir um arquivo próprio ou licenciado</summary><p class="hint">O arquivo fica apenas neste navegador. Use áudio próprio, domínio público ou uma licença compatível.</p><label><input type="checkbox" id="rights"> Tenho os direitos ou a licença para usar este áudio.</label><label for="audioFile">Arquivo de áudio</label><input id="audioFile" type="file" accept="audio/*" disabled><audio id="localAudio" controls hidden></audio><p id="audioMessage" role="status" class="hint"></p></details></dialog>`;
 let playerVersion = 0, audioUrl;
 const dialog = $('#player');
 dialog.querySelector('.close').onclick = () => dialog.close();
-function stopMedia() { $('#embed').replaceChildren(); $('#localAudio').pause(); $('#localAudio').removeAttribute('src'); $('#localAudio').hidden = true; if (audioUrl) URL.revokeObjectURL(audioUrl); audioUrl = null; }
+function stopMedia() {
+  $('#embed').querySelector('audio')?.pause();
+  $('#embed').replaceChildren();
+  $('#localAudio').pause();
+  $('#localAudio').removeAttribute('src');
+  $('#localAudio').hidden = true;
+  if (audioUrl) URL.revokeObjectURL(audioUrl);
+  audioUrl = null;
+}
 dialog.addEventListener('close', () => { playerVersion++; stopMedia(); });
+
+async function playPreview(link, version = playerVersion) {
+  const src = safeUrl(link);
+  if (!src || version !== playerVersion || !dialog.open) return false;
+  stopMedia();
+  const audio = document.createElement('audio');
+  audio.controls = true;
+  audio.autoplay = true;
+  audio.preload = 'metadata';
+  audio.src = src;
+  audio.setAttribute('aria-label', 'Prévia da música');
+  audio.addEventListener('error', () => {
+    if (version === playerVersion) $('#playerMessage').textContent = 'A prévia desta faixa não pôde ser carregada. Abra no Spotify para ouvir.';
+  }, { once: true });
+  $('#embed').append(audio);
+  $('#playerMessage').textContent = 'Tocando a prévia disponível desta faixa.';
+  audio.play().catch(() => {});
+  return true;
+}
+
 async function embedLink(link, version = playerVersion) {
   const data = await api('/api/embed?url=' + encodeURIComponent(link));
   if (version !== playerVersion || !dialog.open) return;
   stopMedia();
   const frame = document.createElement('iframe');
-  frame.title = 'Player oficial do Spotify'; frame.src = data.url;
+  frame.title = 'Player oficial do Spotify';
+  frame.src = data.url;
   frame.allow = 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture';
   $('#embed').append(frame);
-  $('#spotifyLink').value = data.canonical;
   $('#spotifySearch').href = data.canonical;
   $('#spotifySearch').textContent = 'Abrir no Spotify';
-  $('#playerMessage').textContent = 'Se o player não carregar, abra o link no Spotify.';
+  $('#playerMessage').textContent = 'Player oficial do Spotify.';
 }
+
 async function openPlayer(item) {
   const version = ++playerVersion;
-  stopMedia(); $('#spotifyLink').value = ''; $('#playerMessage').textContent = '';
-  $('#rights').checked = false; $('#audioFile').disabled = true; $('#audioFile').value = ''; $('#audioMessage').textContent = '';
+  stopMedia();
+  $('#playerMessage').textContent = '';
+  $('#rights').checked = false;
+  $('#audioFile').disabled = true;
+  $('#audioFile').value = '';
+  $('#audioMessage').textContent = '';
   $('#playerTitle').textContent = item?.name || 'Ouvir no PopReport';
-  $('#spotifySearch').href = 'https://open.spotify.com/search/' + encodeURIComponent(`${item?.name || ''} ${item?.artist || ''}`.trim());
-  $('#spotifySearch').textContent = 'Encontrar no Spotify';
+  $('#spotifySearch').href = item?.spotifyUrl || ('https://open.spotify.com/search/' + encodeURIComponent(`${item?.name || ''} ${item?.artist || ''}`.trim()));
+  $('#spotifySearch').textContent = item?.spotifyUrl ? 'Abrir no Spotify' : 'Encontrar no Spotify';
   dialog.showModal();
-  if (item?.spotifyUrl) { try { await embedLink(item.spotifyUrl, version); } catch(e) { $('#playerMessage').textContent = e.message; } return; }
-  if (!item) return;
-  $('#playerMessage').textContent = 'Procurando um link correspondente no Spotify…';
+
+  if (!item) {
+    $('#playerMessage').textContent = 'Escolha uma música do catálogo para ouvir a prévia.';
+    return;
+  }
+
+  if (item.previewUrl && await playPreview(item.previewUrl, version)) return;
+
+  if (item.spotifyUrl) {
+    try { await embedLink(item.spotifyUrl, version); }
+    catch (e) { if (version === playerVersion) $('#playerMessage').textContent = e.message; }
+    return;
+  }
+
+  $('#playerMessage').textContent = 'Procurando esta música no Spotify…';
   try {
     const data = await api(`/api/resolve/${item.kind}/${encodeURIComponent(item.id)}`);
     if (version !== playerVersion || !dialog.open) return;
     if (data.spotifyUrl) await embedLink(data.spotifyUrl, version);
-    else $('#playerMessage').textContent = 'Abra “Encontrar no Spotify”, copie o link em Compartilhar e cole abaixo.';
-  } catch { if(version === playerVersion) $('#playerMessage').textContent = 'Cole um link do Spotify para abrir o player.'; }
+    else $('#playerMessage').textContent = item.kind === 'track' ? 'Prévia indisponível para esta faixa. Você pode abri-la no Spotify.' : 'Abra este conteúdo no Spotify.';
+  } catch {
+    if (version === playerVersion) $('#playerMessage').textContent = item.kind === 'track' ? 'Prévia indisponível para esta faixa. Você pode abri-la no Spotify.' : 'Abra este conteúdo no Spotify.';
+  }
 }
-$('#embedForm').onsubmit = async e => { e.preventDefault(); ++playerVersion; try { await embedLink($('#spotifyLink').value); } catch(error) { $('#playerMessage').textContent = error.message; } };
 $('#rights').onchange = () => { $('#audioFile').disabled = !$('#rights').checked; if (!$('#rights').checked) stopMedia(); };
 $('#audioFile').onchange = () => {
   const file = $('#audioFile').files[0];
   if (!file || !$('#rights').checked) return;
   if (!file.type.startsWith('audio/') && !/\.(mp3|wav|ogg|m4a|flac)$/i.test(file.name)) { $('#audioMessage').textContent = 'Escolha um arquivo de áudio.'; return; }
-  ++playerVersion; stopMedia(); audioUrl = URL.createObjectURL(file); $('#localAudio').src = audioUrl; $('#localAudio').hidden = false; $('#audioMessage').textContent = file.name;
+  ++playerVersion;
+  stopMedia();
+  audioUrl = URL.createObjectURL(file);
+  $('#localAudio').src = audioUrl;
+  $('#localAudio').hidden = false;
+  $('#audioMessage').textContent = file.name;
 };
 $('#localAudio').onerror = () => { $('#audioMessage').textContent = 'O navegador não conseguiu reproduzir este formato. Tente MP3 ou WAV.'; };
-$('#directPlayer')?.addEventListener('click', () => openPlayer());
+
+const directPlayerButton = $('#directPlayer');
+if (directPlayerButton) {
+  directPlayerButton.textContent = 'Adicionar música';
+  const listenBox = directPlayerButton.closest('.listen-box');
+  if (listenBox) {
+    const title = listenBox.querySelector('h2');
+    const text = listenBox.querySelector('p');
+    if (title) title.textContent = 'Quer guardar uma música?';
+    if (text) text.textContent = 'Cole o link oficial do Spotify no formulário e salve na sua coleção.';
+  }
+  directPlayerButton.addEventListener('click', () => {
+    const state = { ...history.state, screen: 'form', id: null };
+    history.pushState(state, '', stateUrl(state));
+    showScreen(state);
+  });
+}
 
 if ($('#searchForm')) {
   let filter = 'all', offset = 0, controller, generation = 0, combined = {artists:[],albums:[],tracks:[]};
