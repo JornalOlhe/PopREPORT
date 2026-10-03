@@ -27,6 +27,7 @@ loadDotEnv();
 
 const PORT = Number(process.env.PORT || 3000);
 const DB_NAME = process.env.DB_NAME || 'popreport';
+const SPOTIFY_TIMEOUT_MS = Math.max(3000, Math.min(20000, Number(process.env.SPOTIFY_REQUEST_TIMEOUT_MS || 8000)));
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -93,7 +94,7 @@ function dbOptions(includeDatabase = true) {
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     waitForConnections: true,
-    connectionLimit: 8,
+    connectionLimit: Math.max(1, Math.min(20, Number(process.env.DB_CONNECTION_LIMIT || 8))),
     queueLimit: 0,
     charset: 'utf8mb4'
   };
@@ -289,7 +290,7 @@ async function getSpotifyToken() {
 
   const auth = Buffer.from(`${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`).toString('base64');
   const response = await fetch('https://accounts.spotify.com/api/token', {
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS),
     method: 'POST',
     headers: {
       Authorization: `Basic ${auth}`,
@@ -312,7 +313,7 @@ async function getSpotifyToken() {
 async function spotifyFetch(endpoint) {
   const token = await getSpotifyToken();
   const response = await fetch(`https://api.spotify.com/v1${endpoint}`, {
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS),
     headers: { Authorization: `Bearer ${token}` }
   });
   if (!response.ok) {
@@ -335,29 +336,38 @@ function mapArtist(artist) {
 }
 
 function mapAlbum(album) {
+  const primary = album.artists?.[0];
   return {
     id: album.id,
     kind: 'album',
     name: album.name,
     image: album.images?.[0]?.url || '',
+    artist: primary?.name || '',
+    artistId: primary?.id || '',
     artists: (album.artists || []).map(a => a.name),
     releaseDate: album.release_date || '',
     totalTracks: album.total_tracks || 0,
-    spotifyUrl: album.external_urls?.spotify || `https://open.spotify.com/album/${album.id}`
+    spotifyUrl: album.external_urls?.spotify || `https://open.spotify.com/album/${album.id}`,
+    url: album.external_urls?.spotify || `https://open.spotify.com/album/${album.id}`
   };
 }
 
 function mapTrack(track) {
+  const primary = track.artists?.[0];
   return {
     id: track.id,
     kind: 'track',
     name: track.name,
     image: track.album?.images?.[0]?.url || '',
+    artist: primary?.name || '',
+    artistId: primary?.id || '',
     artists: (track.artists || []).map(a => a.name),
     album: track.album?.name || '',
+    duration: Math.round(Number(track.duration_ms || 0) / 1000),
     durationMs: track.duration_ms || 0,
     explicit: Boolean(track.explicit),
-    spotifyUrl: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`
+    spotifyUrl: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`,
+    url: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`
   };
 }
 
@@ -373,16 +383,62 @@ async function spotifySearch(q, filter, offset = 0) {
     market: process.env.SPOTIFY_MARKET || 'BR'
   });
   const data = await spotifyFetch(`/search?${params}`);
+  const hasMore = Boolean(data.artists?.next || data.albums?.next || data.tracks?.next);
   return {
     artists: (data.artists?.items || []).filter(Boolean).map(mapArtist),
     albums: (data.albums?.items || []).filter(Boolean).map(mapAlbum),
     tracks: (data.tracks?.items || []).filter(Boolean).map(mapTrack),
-    hasMore: {
-      artist: Boolean(data.artists?.next),
-      album: Boolean(data.albums?.next),
-      track: Boolean(data.tracks?.next)
-    }
+    hasMore,
+    source: 'Spotify'
   };
+}
+
+async function spotifyDetail(kind, id, offset = 0) {
+  const market = process.env.SPOTIFY_MARKET || 'BR';
+  const safeId = encodeURIComponent(id);
+
+  if (kind === 'artist') {
+    const artist = await spotifyFetch(`/artists/${safeId}`);
+    const albumOffset = Math.max(0, Math.min(1000, Number(offset) || 0));
+    const [albumsResult, tracksResult, bioResult] = await Promise.allSettled([
+      spotifyFetch(`/artists/${safeId}/albums?include_groups=album,single&market=${encodeURIComponent(market)}&limit=24&offset=${albumOffset}`),
+      spotifyFetch(`/artists/${safeId}/top-tracks?market=${encodeURIComponent(market)}`),
+      typeof music.biography === 'function' ? music.biography(artist.name) : Promise.resolve(null)
+    ]);
+    const albumData = albumsResult.status === 'fulfilled' ? albumsResult.value : null;
+    const topData = tracksResult.status === 'fulfilled' ? tracksResult.value : null;
+    const seen = new Set();
+    const albums = (albumData?.items || []).filter(item => item && !seen.has(item.id) && seen.add(item.id)).map(mapAlbum);
+    return {
+      ...mapArtist(artist),
+      followers: artist.followers?.total || 0,
+      albumCount: Number(albumData?.total || albums.length),
+      albums,
+      tracks: (topData?.tracks || []).filter(Boolean).slice(0,10).map(mapTrack),
+      bio: bioResult.status === 'fulfilled' ? bioResult.value : null,
+      hasMore: Boolean(albumData?.next),
+      albumsUnavailable: albumsResult.status !== 'fulfilled',
+      topUnavailable: tracksResult.status !== 'fulfilled',
+      source: 'Spotify'
+    };
+  }
+
+  if (kind === 'album') {
+    const album = await spotifyFetch(`/albums/${safeId}?market=${encodeURIComponent(market)}`);
+    const tracks = (album.tracks?.items || []).filter(Boolean).map(track => mapTrack({
+      ...track,
+      album: {
+        id: album.id,
+        name: album.name,
+        images: album.images,
+        external_urls: album.external_urls
+      }
+    }));
+    return { ...mapAlbum(album), tracks, totalTracks: album.total_tracks || tracks.length, source: 'Spotify' };
+  }
+
+  const track = await spotifyFetch(`/tracks/${safeId}?market=${encodeURIComponent(market)}`);
+  return { ...mapTrack(track), source: 'Spotify' };
 }
 
 function parseSpotifyUrl(raw) {
@@ -579,15 +635,28 @@ async function routeApi(req, res, url) {
     const filter = url.searchParams.get('filter') || 'all';
     const offset = Number(url.searchParams.get('offset') || 0);
     if (q.length < 2 || q.length > 100 || !['all', 'artist', 'album', 'track'].includes(filter) || !Number.isInteger(offset) || offset < 0 || offset > 1000) return sendJson(res, 400, { error: 'Use uma busca de 2 a 100 caracteres e um filtro válido.' });
-    try { return sendJson(res, 200, await music.search(q, filter, offset)); }
-    catch { return sendJson(res, 502, { error: 'Busca indisponível no momento. Verifique sua conexão e tente novamente.' }); }
+    try {
+      const data = spotifyConfigured() ? await spotifySearch(q, filter, offset) : await music.search(q, filter, offset);
+      return sendJson(res, 200, data);
+    } catch (error) {
+      console.error('[Music search]', error.message);
+      return sendJson(res, 502, { error: spotifyConfigured() ? 'Não foi possível consultar o Spotify agora.' : 'Busca indisponível no momento. Verifique sua conexão e tente novamente.' });
+    }
   }
-  const detailMatch = url.pathname.match(/^\/api\/music\/(artist|album|track)\/(\d{1,16})$/);
+  const detailMatch = url.pathname.match(/^\/api\/music\/(artist|album|track)\/([A-Za-z0-9]{22}|\d{1,16})$/);
   if (req.method === 'GET' && detailMatch) {
     const offset = Number(url.searchParams.get('offset') || 0);
     if (!Number.isInteger(offset) || offset < 0 || offset > 1000) return sendJson(res, 400, { error: 'Página inválida.' });
-    try { return sendJson(res, 200, await music.detail(detailMatch[1], detailMatch[2], offset)); }
-    catch { return sendJson(res, 502, { error: 'Não foi possível carregar este perfil. Tente novamente.' }); }
+    try {
+      const id = detailMatch[2];
+      const isSpotifyId = /^[A-Za-z0-9]{22}$/.test(id);
+      if (isSpotifyId && !spotifyConfigured()) return sendJson(res, 503, { error: 'Configure o Spotify no arquivo .env para abrir este perfil.' });
+      const data = isSpotifyId ? await spotifyDetail(detailMatch[1], id, offset) : await music.detail(detailMatch[1], id, offset);
+      return sendJson(res, 200, data);
+    } catch (error) {
+      console.error('[Music detail]', error.message);
+      return sendJson(res, 502, { error: 'Não foi possível carregar este perfil. Tente novamente.' });
+    }
   }
   if (req.method === 'GET' && url.pathname === '/api/embed') {
     const parsed = parseSpotifyUrl(url.searchParams.get('url'));
