@@ -40,7 +40,7 @@ const dz = endpoint => json('https://api.deezer.com' + endpoint);
 const image = x => x.picture_xl || x.cover_xl || x.picture_big || x.cover_big || x.picture_medium || x.cover_medium || '';
 const artist = x => ({ id: String(x.id), kind: 'artist', name: x.name, image: image(x), url: x.link });
 const album = x => ({ id: String(x.id), kind: 'album', name: x.title, image: image(x), artist: x.artist?.name || '', artistId: x.artist?.id, releaseDate: x.release_date || '', url: x.link });
-const track = x => ({ id: String(x.id), kind: 'track', name: x.title, image: image(x.album || {}), artist: x.artist?.name || '', artistId: x.artist?.id, duration: x.duration, url: x.link });
+const track = x => ({ id: String(x.id), kind: 'track', name: x.title, image: image(x.album || {}), artist: x.artist?.name || '', artistId: x.artist?.id, duration: x.duration, previewUrl: x.preview || '', url: x.link });
 async function search(q, filter, offset) {
   const types = filter === 'all' ? ['artist', 'album', 'track'] : [filter];
   const result = { artists: [], albums: [], tracks: [], hasMore: false, source: 'Deezer' };
