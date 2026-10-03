@@ -27,7 +27,7 @@ async function json(url) {
   else {
     const target = new URL(url);
     if (browserMode) target.searchParams.set('origin', '*');
-    const response = await fetch(target, { signal: AbortSignal.timeout(10000), ...(browserMode ? {} : { headers: { 'User-Agent': 'PopReport/4.0 (academic music discovery)' } }) });
+    const response = await fetch(target, { signal: AbortSignal.timeout(10000), ...(browserMode ? {} : { headers: { 'User-Agent': 'PopReport/5.0 (academic music discovery)' } }) });
     if (!response.ok) throw new Error('Fonte musical temporariamente indisponível. Tente novamente.');
     data = await response.json();
   }
