@@ -36,7 +36,9 @@ async function json(url) {
   cache.set(url, { data, until: Date.now() + 300000 });
   return data;
 }
-const dz = endpoint => json('https://api.deezer.com' + endpoint);
+// O endereço só é trocado nos testes automatizados (Deezer simulado).
+const DEEZER = (typeof process !== 'undefined' && process.env?.DEEZER_API_URL) || 'https://api.deezer.com';
+const dz = endpoint => json(DEEZER + endpoint);
 const image = x => x.picture_xl || x.cover_xl || x.picture_big || x.cover_big || x.picture_medium || x.cover_medium || '';
 const artist = x => ({ id: String(x.id), kind: 'artist', name: x.name, image: image(x), url: x.link });
 const album = x => ({ id: String(x.id), kind: 'album', name: x.title, image: image(x), artist: x.artist?.name || '', artistId: x.artist?.id, releaseDate: x.release_date || '', url: x.link });
@@ -78,6 +80,22 @@ async function detail(kind, id, offset = 0) {
   const data = await dz(`/${kind}/${id}`);
   return kind === 'album' ? { ...album(data), tracks: (data.tracks?.data || []).map(t => track({ ...t, album: data })), totalTracks: data.nb_tracks } : track(data);
 }
-if (typeof module !== 'undefined' && module.exports) module.exports = { search, detail, biography };
-else root.PopReportMusic = { search, detail, biography };
+// Descobre artista, álbum e gênero de uma música a partir do título (e do artista, quando se sabe).
+const plain = text => String(text || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+async function identify(title, artistName = '') {
+  const name = String(title || '').trim();
+  if (!name) return null;
+  const artistKey = plain(artistName);
+  const query = artistName ? `artist:"${artistName}" track:"${name}"` : name;
+  let hits = (await dz(`/search/track?q=${encodeURIComponent(query)}&limit=5`)).data || [];
+  if (!hits.length && artistName) hits = (await dz(`/search/track?q=${encodeURIComponent(`${name} ${artistName}`)}&limit=5`)).data || [];
+  if (!hits.length) return null;
+  const exact = artistKey && hits.find(hit => plain(hit.artist?.name) === artistKey);
+  const hit = exact || hits[0];
+  let genre = '';
+  try { genre = ((await dz(`/album/${hit.album.id}`)).genres?.data || []).slice(0, 3).map(g => g.name).join(', '); } catch { /* sem gênero: o campo fica para o usuário */ }
+  return { track: hit.title, artist: hit.artist?.name || '', album: hit.album?.title || '', genre, image: image(hit.album || {}), verified: Boolean(exact) };
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = { search, detail, biography, identify };
+else root.PopReportMusic = { search, detail, biography, identify };
 })(globalThis);

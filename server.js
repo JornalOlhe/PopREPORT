@@ -5,7 +5,7 @@ let mysql = null;
 try { mysql = require('mysql2/promise'); } catch { mysql = null; }
 
 const ROOT = __dirname;
-const music = require('./music');
+const music = require('./script/music-data');
 
 function loadDotEnv() {
   for (const fileName of ['.env.local', '.env']) {
@@ -29,6 +29,9 @@ loadDotEnv();
 
 const PORT = Number(process.env.PORT || 3000);
 const DB_NAME = process.env.DB_NAME || 'popreport';
+// Endereços do player e do oEmbed do Spotify (trocados apenas nos testes).
+const SPOTIFY_OEMBED = process.env.SPOTIFY_OEMBED_URL || 'https://open.spotify.com/oembed';
+const SPOTIFY_EMBED = process.env.SPOTIFY_EMBED_URL || 'https://open.spotify.com/embed/track';
 const SPOTIFY_TIMEOUT_MS = Math.max(3000, Math.min(20000, Number(process.env.SPOTIFY_REQUEST_TIMEOUT_MS || 8000)));
 
 const MIME = {
@@ -143,134 +146,6 @@ async function getDbStatus() {
       error: 'Sua coleção está temporariamente indisponível. Tente novamente em instantes.'
     };
   }
-}
-
-async function getDatabaseCatalog(limit = 12) {
-  const safeLimit = Math.max(1, Math.min(30, Number(limit) || 12));
-
-  const artists = await dbQuery(`
-    SELECT
-      a.id,
-      a.spotify_id AS spotifyId,
-      a.nome AS name,
-      a.imagem_url AS image,
-      a.pagina_local AS localUrl,
-      GROUP_CONCAT(DISTINCT g.nome ORDER BY g.nome SEPARATOR ' • ') AS genre,
-      COUNT(DISTINCT al.id) AS albumCount,
-      COUNT(DISTINCT m.id) AS trackCount
-    FROM artista a
-    LEFT JOIN artista_genero ag ON ag.artista_id = a.id
-    LEFT JOIN genero g ON g.id = ag.genero_id
-    LEFT JOIN album al ON al.artista_id = a.id
-    LEFT JOIN musica m ON m.album_id = al.id
-    GROUP BY a.id, a.spotify_id, a.nome, a.imagem_url, a.pagina_local
-    ORDER BY a.nome
-    LIMIT ${safeLimit}
-  `);
-
-  const albums = await dbQuery(`
-    SELECT
-      al.id,
-      al.spotify_id AS spotifyId,
-      al.titulo AS name,
-      al.imagem_url AS image,
-      al.ano_lancamento AS year,
-      al.link_spotify AS spotifyUrl,
-      a.nome AS artist,
-      COUNT(m.id) AS trackCount
-    FROM album al
-    JOIN artista a ON a.id = al.artista_id
-    LEFT JOIN musica m ON m.album_id = al.id
-    GROUP BY al.id, al.spotify_id, al.titulo, al.imagem_url, al.ano_lancamento, al.link_spotify, a.nome
-    ORDER BY al.criado_em DESC, al.id DESC
-    LIMIT ${safeLimit}
-  `);
-
-  const tracks = await dbQuery(`
-    SELECT
-      m.id,
-      m.spotify_id AS spotifyId,
-      m.titulo AS name,
-      m.duracao_ms AS durationMs,
-      m.explicita AS explicit,
-      m.link_spotify AS spotifyUrl,
-      m.criado_em AS createdAt,
-      al.titulo AS album,
-      al.imagem_url AS image,
-      a.nome AS artist
-    FROM musica m
-    JOIN album al ON al.id = m.album_id
-    JOIN artista a ON a.id = al.artista_id
-    ORDER BY m.criado_em DESC, m.id DESC
-    LIMIT ${safeLimit}
-  `);
-
-  return { artists, albums, tracks };
-}
-
-async function searchDatabase(q, filter = 'all') {
-  const term = `%${q}%`;
-  const result = { artists: [], albums: [], tracks: [] };
-
-  if (filter === 'all' || filter === 'artist') {
-    result.artists = await dbQuery(`
-      SELECT DISTINCT
-        a.id,
-        a.spotify_id AS spotifyId,
-        a.nome AS name,
-        a.imagem_url AS image,
-        a.pagina_local AS localUrl,
-        GROUP_CONCAT(DISTINCT g.nome ORDER BY g.nome SEPARATOR ' • ') AS genre
-      FROM artista a
-      LEFT JOIN artista_genero ag ON ag.artista_id = a.id
-      LEFT JOIN genero g ON g.id = ag.genero_id
-      WHERE a.nome LIKE ? OR g.nome LIKE ?
-      GROUP BY a.id, a.spotify_id, a.nome, a.imagem_url, a.pagina_local
-      ORDER BY a.nome
-      LIMIT 10
-    `, [term, term]);
-  }
-
-  if (filter === 'all' || filter === 'album') {
-    result.albums = await dbQuery(`
-      SELECT
-        al.id,
-        al.spotify_id AS spotifyId,
-        al.titulo AS name,
-        al.imagem_url AS image,
-        al.ano_lancamento AS year,
-        al.link_spotify AS spotifyUrl,
-        a.nome AS artist
-      FROM album al
-      JOIN artista a ON a.id = al.artista_id
-      WHERE al.titulo LIKE ? OR a.nome LIKE ?
-      ORDER BY al.titulo
-      LIMIT 10
-    `, [term, term]);
-  }
-
-  if (filter === 'all' || filter === 'track') {
-    result.tracks = await dbQuery(`
-      SELECT
-        m.id,
-        m.spotify_id AS spotifyId,
-        m.titulo AS name,
-        m.duracao_ms AS durationMs,
-        m.explicita AS explicit,
-        m.link_spotify AS spotifyUrl,
-        al.titulo AS album,
-        al.imagem_url AS image,
-        a.nome AS artist
-      FROM musica m
-      JOIN album al ON al.id = m.album_id
-      JOIN artista a ON a.id = al.artista_id
-      WHERE m.titulo LIKE ? OR al.titulo LIKE ? OR a.nome LIKE ?
-      ORDER BY m.titulo
-      LIMIT 10
-    `, [term, term, term]);
-  }
-
-  return result;
 }
 
 // -------------------------
@@ -544,6 +419,52 @@ async function enrichLibraryRowsFromSpotify(rows) {
   }
 }
 
+// Dados de uma faixa com a Spotify Web API; se o artista não tiver gênero, tenta o Deezer.
+async function spotifyTrackDetails(parsed) {
+  const { track, mainArtist, artistDetails } = await spotifyTrackMetadata(parsed.id);
+  let genre = (artistDetails?.genres || []).slice(0, 3).join(', ');
+  if (!genre) genre = (await music.identify(track.name, mainArtist?.name).catch(() => null))?.genre || '';
+  return {
+    spotifyId: track.id,
+    spotifyUrl: track.external_urls?.spotify || parsed.canonical,
+    track: track.name || '',
+    artist: mainArtist?.name || '',
+    artistId: mainArtist?.id || '',
+    album: track.album?.name || '',
+    image: track.album?.images?.[0]?.url || artistDetails?.images?.[0]?.url || '',
+    duration: Math.round(Number(track.duration_ms || 0) / 1000),
+    explicit: Boolean(track.explicit),
+    genre,
+    verified: true,
+    source: 'Spotify'
+  };
+}
+
+// Sem credenciais: título pelo oEmbed público, artista pelo player embed e álbum/gênero pelo Deezer.
+async function publicTrackDetails(parsed) {
+  const oembed = await (await fetch(`${SPOTIFY_OEMBED}?url=${encodeURIComponent(parsed.canonical)}`, { signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS) })).json();
+  const title = String(oembed.title || '').trim();
+  if (!title) throw new Error('oEmbed sem título');
+  let artist = '';
+  try {
+    const page = await (await fetch(`${SPOTIFY_EMBED}/${encodeURIComponent(parsed.id)}`, { signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS) })).text();
+    const found = page.match(/"artists"\s*:\s*\[\s*\{\s*"name"\s*:\s*"([^"]+)"/);
+    if (found) artist = JSON.parse(`"${found[1]}"`);
+  } catch (error) { console.warn('[Spotify embed]', error.message); }
+  const match = await music.identify(title, artist).catch(() => null);
+  return {
+    spotifyId: parsed.id,
+    spotifyUrl: parsed.canonical,
+    track: title,
+    artist: artist || match?.artist || '',
+    album: match?.album || '',
+    image: oembed.thumbnail_url || match?.image || '',
+    genre: match?.genre || '',
+    verified: Boolean(match?.verified),
+    source: match ? 'Spotify + Deezer' : 'Spotify'
+  };
+}
+
 async function saveTrackToDatabase({ artistInput, trackInput, albumInput, genreInput, parsed }) {
   let meta = null;
   try { meta = await spotifyTrackMetadata(parsed.id); }
@@ -555,7 +476,7 @@ async function saveTrackToDatabase({ artistInput, trackInput, albumInput, genreI
   // A temporary metadata outage must never replace an existing album or duration.
   if (!spotifyTrack) {
     const existing = await dbQuery(`SELECT m.id, m.titulo AS track, a.nome AS artist, a.spotify_id AS artistId,
-      al.titulo AS album, al.imagem_url AS image, ROUND(m.duracao_ms / 1000) AS duration,
+      al.titulo AS album, al.imagem_url AS image, CAST(ROUND(m.duracao_ms / 1000) AS UNSIGNED) AS duration,
       m.link_spotify AS spotifyUrl, m.criado_em AS createdAt,
       (SELECT GROUP_CONCAT(g.nome ORDER BY g.nome SEPARATOR ', ') FROM artista_genero ag JOIN genero g ON g.id=ag.genero_id WHERE ag.artista_id=a.id) AS genre
       FROM musica m JOIN album al ON al.id=m.album_id JOIN artista a ON a.id=al.artista_id
@@ -755,75 +676,14 @@ async function routeApi(req, res, url) {
     });
   }
 
-  if (req.method === 'GET' && url.pathname === '/api/db/status') {
-    return sendJson(res, 200, await getDbStatus());
-  }
-
-  if (req.method === 'GET' && url.pathname === '/api/catalogo') {
-    try {
-      const catalog = await getDatabaseCatalog(url.searchParams.get('limit'));
-      return sendJson(res, 200, { source: 'mysql', ...catalog });
-    } catch (error) {
-      console.error('[DB /api/catalogo]', error.message);
-      return sendJson(res, 503, { error: 'Não foi possível carregar sua coleção. Tente novamente em instantes.' });
-    }
-  }
-
-  if (req.method === 'GET' && url.pathname === '/api/catalogo/search') {
-    const q = String(url.searchParams.get('q') || '').trim();
-    const filter = String(url.searchParams.get('filter') || 'all');
-    if (q.length < 2) return sendJson(res, 400, { error: 'Digite pelo menos 2 caracteres.' });
-    try {
-      return sendJson(res, 200, { source: 'mysql', ...(await searchDatabase(q, filter)) });
-    } catch (error) {
-      console.error('[DB search]', error.message);
-      return sendJson(res, 503, { error: 'Busca local indisponível.' });
-    }
-  }
-
-  if (req.method === 'GET' && url.pathname === '/api/spotify/status') {
-    return sendJson(res, 200, { configured: spotifyConfigured(), market: process.env.SPOTIFY_MARKET || 'BR' });
-  }
-
   if (req.method === 'GET' && url.pathname === '/api/spotify/track') {
     const parsed = parseSpotifyUrl(url.searchParams.get('url'));
     if (!parsed || parsed.type !== 'track') return sendJson(res, 400, { error: 'Cole um link válido de faixa do Spotify.' });
-    if (!spotifyConfigured()) return sendJson(res, 503, { error: 'Configure SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no .env para preencher os dados automaticamente.' });
     try {
-      const { track, mainArtist, artistDetails } = await spotifyTrackMetadata(parsed.id);
-      return sendJson(res, 200, {
-        spotifyId: track.id,
-        spotifyUrl: track.external_urls?.spotify || parsed.canonical,
-        track: track.name || '',
-        artist: mainArtist?.name || '',
-        artistId: mainArtist?.id || '',
-        album: track.album?.name || '',
-        image: track.album?.images?.[0]?.url || artistDetails?.images?.[0]?.url || '',
-        duration: Math.round(Number(track.duration_ms || 0) / 1000),
-        explicit: Boolean(track.explicit),
-        genre: (artistDetails?.genres || []).slice(0,3).join(', '),
-        source: 'Spotify'
-      });
+      return sendJson(res, 200, spotifyConfigured() ? await spotifyTrackDetails(parsed) : await publicTrackDetails(parsed));
     } catch (error) {
-      console.error('[Spotify track metadata]', error.message);
-      return sendJson(res, 502, { error: 'Não foi possível carregar os dados dessa faixa no Spotify agora.' });
-    }
-  }
-
-  if (req.method === 'GET' && url.pathname === '/api/spotify/search') {
-    const q = String(url.searchParams.get('q') || '').trim();
-    const filter = String(url.searchParams.get('filter') || 'all');
-    const offset = Number(url.searchParams.get('offset') || 0);
-    if (q.length < 2) return sendJson(res, 400, { error: 'Digite pelo menos 2 caracteres.' });
-    if (q.length > 100) return sendJson(res, 400, { error: 'Busca muito longa.' });
-    try {
-      return sendJson(res, 200, await spotifySearch(q, filter, offset));
-    } catch (error) {
-      if (error.code === 'SPOTIFY_NOT_CONFIGURED' || error.message === 'SPOTIFY_NOT_CONFIGURED') {
-        return sendJson(res, 503, { error: 'A busca no Spotify está temporariamente indisponível. Tente novamente em instantes.' });
-      }
-      console.error('[Spotify search]', error.message);
-      return sendJson(res, 502, { error: 'Não foi possível consultar o Spotify agora.' });
+      console.error('[Track metadata]', error.message);
+      return sendJson(res, 502, { error: 'Não foi possível identificar esta música agora. Preencha os campos manualmente.' });
     }
   }
 
@@ -837,7 +697,7 @@ async function routeApi(req, res, url) {
           m.titulo AS track,
           al.titulo AS album,
           al.imagem_url AS image,
-          ROUND(m.duracao_ms / 1000) AS duration,
+          CAST(ROUND(m.duracao_ms / 1000) AS UNSIGNED) AS duration,
           m.link_spotify AS spotifyUrl,
           m.spotify_id AS spotifyId,
           m.criado_em AS createdAt,

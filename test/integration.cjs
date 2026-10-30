@@ -24,15 +24,15 @@ async function run(extra, callback) {
     assert.equal(state.spotify.configured,false);
     assert.equal(state.database.connected,true);
     console.log('PASS: MySQL conectado e Spotify opcional desativado');
-    for(const file of ['/.env','/server.js','/music.js','/database/popreport.sql','/node_modules/mysql2/package.json','/%2eenv','/script/../server.js']) assert.equal((await request(file)).status,404,file);
-    console.log('PASS: arquivos privados bloqueados');
+    for(const file of ['/.env','/server.js','/database/popreport.sql','/node_modules/mysql2/package.json','/%2eenv','/script/../server.js']) assert.equal((await request(file)).status,404,file);
+    for(const route of ['/api/catalogo','/api/db/status','/api/spotify/status','/api/spotify/search?q=abc']) assert.equal((await request(route)).status,404,route);
+    console.log('PASS: arquivos privados bloqueados e rotas antigas removidas');
     for(const query of ['q=x','q=abc&filter=invalid','q=abc&offset=-1','q=abc&offset=1.5','q='+ 'x'.repeat(101)]) assert.equal((await request('/api/music/search?'+query)).status,400);
     for(const link of ['https://evil.example/track/43iIQbw5hx986dUEZbr3eN','http://open.spotify.com/track/43iIQbw5hx986dUEZbr3eN','https://open.spotify.com/track/short','javascript:alert(1)']) assert.equal((await request('/api/embed?url='+encodeURIComponent(link))).status,400);
     const validTrackUrl='https://open.spotify.com/track/46rPcSaUj5jHxX60xWmsMD';
     const embed=await (await request('/api/embed?url='+encodeURIComponent('https://open.spotify.com/intl-pt/track/43iIQbw5hx986dUEZbr3eN?si=test'))).json();
     assert.equal(embed.url,'https://open.spotify.com/embed/track/43iIQbw5hx986dUEZbr3eN');
     assert.equal((await request('/api/spotify/track?url='+encodeURIComponent('https://open.spotify.com/track/short'))).status,400);
-    assert.equal((await request('/api/spotify/track?url='+encodeURIComponent(validTrackUrl))).status,503);
     assert.equal((await request('/?screen=artist&id=12369444')).status,200);
     assert.equal((await request('/Imagens/fallback.svg')).status,200);
     assert.equal((await request('/api/lista',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://evil.example'},body:'{}'})).status,403);
@@ -67,7 +67,36 @@ async function run(extra, callback) {
     try{await connection.execute('DELETE FROM playlist WHERE id=? AND nome=?',[playlist.id,playlistName]);}finally{await connection.end();}
     console.log('PASS: usuário, playlist, música, álbum, artista e gênero ligados; relação N:N sem duplicação');
   });
-  await run({DB_PORT:'1'},async request=>{const state=await(await request('/api/db/status')).json();assert.equal(state.connected,false);assert.equal((await request('/api/lista')).status,503);assert.equal((await request('/')).status,200);console.log('PASS: falha do banco é explícita e não impede a home');});
+  await run({DB_PORT:'1'},async request=>{const state=await(await request('/api/status')).json();assert.equal(state.database.connected,false);assert.equal((await request('/api/lista')).status,503);assert.equal((await request('/')).status,200);console.log('PASS: falha do banco é explícita e não impede a home');});
+
+  // Identificação por link sem credenciais: Spotify (oEmbed + player) e Deezer simulados localmente.
+  const http=require('node:http');
+  const mockPort=port+1;
+  const mock=await new Promise(resolve=>{const server=http.createServer((req,res)=>{
+    const u=new URL(req.url,'http://x');const send=(body,type='application/json')=>{res.setHeader('content-type',type);res.end(typeof body==='string'?body:JSON.stringify(body));};
+    if(u.pathname==='/oembed'){const id=u.searchParams.get('url').split('/').pop();return send(id==='7777777777777777777777'?{title:'Faixa Inexistente',thumbnail_url:'https://i.scdn.co/image/capa'}:{title:'Never Gonna Give You Up',thumbnail_url:'https://i.scdn.co/image/capa'});}
+    if(u.pathname.startsWith('/embed/track/')){const id=u.pathname.split('/').pop();return send(id==='5555555555555555555555'?'<html>sem dados</html>':'{"entity":{"artists":[{"name":"Rick Astley","uri":"spotify:artist:x"}]}}','text/html');}
+    if(u.pathname==='/search/track'){const q=u.searchParams.get('q');return send({data:/Inexistente/.test(q)?[]:[{title:'Never Gonna Give You Up',artist:{name:'Rick Astley'},album:{id:7,title:'Whenever You Need Somebody',cover_xl:'https://cdn.test/capa.jpg'}}]});}
+    if(u.pathname==='/album/7')return send({id:7,genres:{data:[{name:'Pop'},{name:'Dance'}]}});
+    res.statusCode=404;send({});
+  }).listen(mockPort,'127.0.0.1',()=>resolve(server));});
+  try{
+    await run({SPOTIFY_CLIENT_ID:'',SPOTIFY_CLIENT_SECRET:'',SPOTIFY_OEMBED_URL:`http://127.0.0.1:${mockPort}/oembed`,SPOTIFY_EMBED_URL:`http://127.0.0.1:${mockPort}/embed/track`,DEEZER_API_URL:`http://127.0.0.1:${mockPort}`},async request=>{
+      const track=id=>request('/api/spotify/track?url='+encodeURIComponent('https://open.spotify.com/track/'+id));
+      const full=await(await track('4uLU6hMCjMI75M1A2tKUQC')).json();
+      assert.equal(full.track,'Never Gonna Give You Up');assert.equal(full.artist,'Rick Astley');assert.equal(full.album,'Whenever You Need Somebody');assert.equal(full.genre,'Pop, Dance');assert.equal(full.verified,true);assert.equal(full.source,'Spotify + Deezer');assert.equal(full.spotifyId,'4uLU6hMCjMI75M1A2tKUQC');
+      const noArtist=await(await track('5555555555555555555555')).json();
+      assert.equal(noArtist.artist,'Rick Astley');assert.equal(noArtist.verified,false);
+      const unknown=await(await track('7777777777777777777777')).json();
+      assert.equal(unknown.track,'Faixa Inexistente');assert.equal(unknown.album,'');assert.equal(unknown.genre,'');assert.equal(unknown.source,'Spotify');
+      assert.equal((await request('/api/spotify/track?url='+encodeURIComponent('https://open.spotify.com/album/4uLU6hMCjMI75M1A2tKUQC'))).status,400);
+      console.log('PASS: link da música identifica artista, álbum e gênero sem credenciais do Spotify');
+    });
+    await run({SPOTIFY_CLIENT_ID:'',SPOTIFY_CLIENT_SECRET:'',SPOTIFY_OEMBED_URL:'http://127.0.0.1:1/oembed'},async request=>{
+      assert.equal((await request('/api/spotify/track?url='+encodeURIComponent('https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC'))).status,502);
+      console.log('PASS: falha ao identificar vira mensagem amigável (502)');
+    });
+  }finally{mock.close();}
 
   if(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET){
     await run({},async request=>{

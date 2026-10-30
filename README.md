@@ -42,31 +42,110 @@ git push
 
 O build copia somente os HTML, CSS, JavaScript público e a imagem de fallback. Não copia .env, SQL, dependências ou código do servidor. Os arquivos de docs/ são gerados a partir da raiz: se você os editar diretamente no GitHub, traga a mudança para a fonte antes do próximo build para não sobrescrevê-la.
 
-## Versão local com MySQL
+## Como rodar no seu computador (baixou o .zip?)
 
-Preservada para o projeto acadêmico. Requisitos: Node.js 22+ recomendado, MySQL Server 8 ativo e internet.
+O PopReport usa `fetch` para conversar com o servidor (`/api/...`). Por isso ele **precisa do servidor rodando**: abrir o `index.html` com duplo clique (endereço `file://`) não funciona, e o site avisa isso na tela.
 
-1. Instale as dependências: npm install.
-2. Copie .env.example como .env.
-3. Preencha DB_PASSWORD com a senha do MySQL instalado. Os padrões são DB_HOST=127.0.0.1, DB_PORT=3306, DB_USER=root e DB_NAME=popreport.
-4. Para busca e perfis diretamente do Spotify, preencha SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no .env. O segredo nunca deve ser enviado ao GitHub.
-5. Execute npm run db:setup e npm start.
-6. Abra http://127.0.0.1:3000.
+**Você precisa de:** [Node.js 18+](https://nodejs.org) e [MySQL 8](https://dev.mysql.com/downloads/mysql/) ligado.
 
-No PowerShell, use npm.cmd se houver bloqueio de scripts. iniciar.bat também instala, prepara o banco e inicia o servidor. O setup não muda a senha da sua instalação nem apaga tabelas existentes.
+1. Extraia o .zip, abra um terminal dentro da pasta e instale a dependência:
+   ```sh
+   npm install
+   ```
+2. Crie o arquivo `.env.local` (ele não vai para o GitHub) com a senha do seu MySQL:
+   ```
+   DB_PASSWORD=sua_senha_do_mysql
+   ```
+   Os padrões são `DB_HOST=127.0.0.1`, `DB_PORT=3306`, `DB_USER=root` e `DB_NAME=popreport`. Todas as opções estão em `.env.example`.
+3. Crie o banco, as tabelas e os dados iniciais (pode repetir sem medo: não apaga nada):
+   ```sh
+   npm run db:setup
+   ```
+4. Inicie o servidor:
+   ```sh
+   npm start
+   ```
+5. Abra **http://127.0.0.1:3000** no navegador.
 
-O .env real é local e fica fora do repositório público. O iniciar.bat cria esse arquivo a partir do .env.example quando ele ainda não existe. Com SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET configurados, a busca principal, os perfis de artista, fotos, seguidores, discografia, faixas populares e o preenchimento do formulário vêm diretamente do Spotify. Sem as credenciais, a aplicação local mantém o fallback público para descoberta e o Spotify Embed por link continua disponível.
+No Windows, o `iniciar.bat` faz os passos 1 a 4 sozinho. No PowerShell, use `npm.cmd` se houver bloqueio de scripts.
 
-No modo local, Músicas salvas lê o MySQL e o formulário grava com consultas parametrizadas e transação. Ao colar um link de faixa, o formulário tenta preencher artista, música, álbum e gênero diretamente pelo Spotify. Em indisponibilidade de metadados, o cadastro preserva os dados já existentes. O servidor escuta apenas em 127.0.0.1 e permite somente arquivos públicos definidos explicitamente.
+### Como saber se o banco está conectado
+
+- **Na tela:** o rodapé mostra `Banco conectado · 12 músicas` (verde) ou `Banco desconectado` (vermelho).
+- **No terminal:** ao iniciar, aparece `MySQL: conectado (popreport)`.
+- **Pelo fetch:** abra http://127.0.0.1:3000/api/status. Deve mostrar `"connected": true` e a contagem de cada tabela.
+
+Sem MySQL o site abre e a busca funciona, mas Músicas salvas e o formulário respondem com erro (503).
+
+### Imagens do catálogo
+
+O `database/popreport.sql` cadastra 12 artistas com fotos em `Imagens/` (`Benito.jpg`, `billie.jpg`, `taylor.jpg`, `Sombr.jpg`, `dean.jpg`, `miloj.jpg`, `Laufey.jpg`, `dragon.jpg`, `harry.jpg`, `fike.jpg`, `Bruno.jpg`, `20.jpg`). Essas imagens não estão no repositório: copie-as para a pasta `Imagens/`. Sem elas o site mostra uma capa genérica no lugar.
+
+### Spotify (opcional)
+
+Para a busca usar a Spotify Web API em vez do Deezer, preencha `SPOTIFY_CLIENT_ID` e `SPOTIFY_CLIENT_SECRET` no `.env.local`. O segredo nunca deve ir para o GitHub. ### Colar o link e preencher sozinho
+
+No formulário **Adicionar música**, cole o link da faixa do Spotify: o PopReport identifica artista, música, álbum e gênero e preenche os campos (você pode editar antes de salvar).
+
+- **Com credenciais do Spotify:** os dados vêm da Spotify Web API. Se o artista não tiver gênero lá, o gênero vem do Deezer.
+- **Sem credenciais** (e também no site publicado): o título vem do oEmbed público do Spotify, o artista é lido do player embed (só no servidor local) e álbum e gênero vêm do Deezer. No site publicado o artista não é conhecido, então o resultado aparece como sugestão e a tela pede para conferir o artista.
+- Se algo não for encontrado, o formulário diz o que faltou para você completar.
+
+Essas fontes públicas não têm contrato de estabilidade e podem mudar; nesse caso o formulário continua funcionando com preenchimento manual.
+
+## Entendendo o fetch neste projeto
+
+O navegador (front-end) pede dados ao servidor com `fetch`, e o servidor (`server.js`) responde em JSON. Os dois lados seguem o mesmo padrão:
+
+**Ler dados (GET)**, em `script/app.js`:
+```js
+fetch('/api/lista')
+  .then(resposta => resposta.json())
+  .then(musicas => console.log(musicas))
+  .catch(erro => console.error('Erro ao buscar:', erro));
+```
+
+**Enviar dados (POST)**, em `script/form.js`:
+```js
+fetch('/api/lista', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ artist: 'Radiohead', track: 'Creep', spotifyUrl: 'https://open.spotify.com/track/...' })
+})
+  .then(resposta => resposta.json())
+  .then(salva => console.log('Salvou', salva))
+  .catch(erro => console.error('Erro ao enviar:', erro));
+```
+
+**Responder (servidor)**, em `server.js`: a rota recebe, grava no MySQL com consulta parametrizada e devolve JSON.
+
+Dica: abra o DevTools (`F12`) > aba **Network** para ver cada `fetch` acontecendo, com o status e a resposta.
+
+Rotas disponíveis:
+
+| Rota | O que faz |
+|---|---|
+| `GET /api/status` | situação do banco e do Spotify |
+| `GET /api/music/search?q=&filter=&offset=` | busca de artistas, álbuns e músicas |
+| `GET /api/music/artist/:id` · `/album/:id` · `/track/:id` | perfil, discografia e faixas |
+| `GET /api/lista` · `POST /api/lista` | músicas salvas (lê e grava no MySQL) |
+| `GET /api/collection` · `POST /api/collection` | perfil e playlists |
+| `GET /api/spotify/track?url=` | metadados de uma faixa (precisa do Spotify configurado) |
+| `GET /api/embed?url=` | endereço do player oficial do Spotify |
+| `GET /api/resolve/:tipo/:id` | encontra no Spotify o item de uma busca pública |
+
+## Banco de dados
+
+O projeto usa **MySQL** (não usa Supabase nem outro serviço na nuvem). Mantidas as seis entidades principais (artista, genero, album, musica, usuario, playlist) e duas associativas (artista_genero e playlist_musica), com PK/FK, NOT NULL, UNIQUE, relações 1:N e N:N, carga inicial e consultas parametrizadas com transação. O servidor escuta apenas em `127.0.0.1` e serve somente os arquivos de uma lista pública explícita.
 
 ## Estrutura
 
-- index.html, artist.html, library.html e form.html: interface fonte.
+- index.html e app.css: interface e estilo. artist.html, library.html e form.html só redirecionam para a tela certa.
 - script/app.js e script/form.js: navegação, pesquisa, formulário e player.
 - script/api.js: acesso ao servidor local ou coleção no navegador na publicação.
 - script/music-data.js: provedor público de dados compartilhado entre Node e Pages.
 - script/runtime-config.js: modo local; o build gera o modo estático em docs/.
-- server.js e music.js: aplicação local.
+- server.js: aplicação local (Node puro, sem Express).
 - docs/: arquivos publicados pelo Pages.
 - database/: criação, carga inicial, consultas e modelos acadêmicos.
 - test/integration.cjs: testes locais de integração.
