@@ -69,7 +69,7 @@ function card(x) {
   return `<article class="card"><div class="card-art">${photo(x)}${play(x)}</div><h3>${esc(x.name)}</h3><p>${artistLink(x)}</p>${x.releaseDate ? `<p>${esc(x.releaseDate.slice(0,4))}</p>` : ''}</article>`;
 }
 function artistLink(x) { return x.artistId ? `<a href="./" data-artist="${esc(x.artistId)}">${esc(x.artist || 'Ver artista')}</a>` : esc(x.artist || ''); }
-// Converte uma linha salva (banco local, MySQL ou Supabase) no formato usado pelos cards e pelo player.
+// Converte uma linha salva (navegador ou Supabase) no formato usado pelos cards e pelo player.
 function libraryItem(x) {
   const source = x.source || 'spotify';
   return { ...x, kind: 'track', name: x.track, id: x.externalId || x.spotifyId || x.id, source, spotifyUrl: source === 'spotify' ? (x.spotifyUrl || x.url || '') : '' };

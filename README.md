@@ -12,7 +12,7 @@ A publicação usa GitHub Pages, sem servidor contratado e sem expor credenciais
 
 Não há mais campo de link. O fluxo é: **criar a playlist → buscar o artista (foto e nome) → escolher o álbum (do mais recente ao mais antigo; dá para inverter) → ouvir as prévias → tocar no + de cada faixa** (ou em "Adicionar todas"). A busca de artista só é liberada depois que existe uma playlist. Cada faixa adicionada é identificada no banco com artista, álbum e música, sem duplicar.
 
-No site online, as playlists ficam no **Supabase** (schema em `database/supabase_schema.sql`, protegido por RLS). Cada navegador entra com um login anônimo, sem e-mail nem senha, e só enxerga as próprias playlists; limpar os dados do site cria um novo perfil. É preciso ligar **Authentication > Sign In / Providers > Allow anonymous sign-ins** no painel do Supabase. Enquanto isso estiver desligado, o site usa o armazenamento do navegador automaticamente e avisa na tela. A URL do projeto e a chave *publishable* ficam em `supabase.public.json` (podem ser públicas; nunca coloque a chave `service_role` ali).
+No site online, as playlists ficam no **Supabase** (schema em `supabase/schema.sql`; carga inicial em `supabase/seed.sql`, protegido por RLS). Cada navegador entra com um login anônimo, sem e-mail nem senha, e só enxerga as próprias playlists; limpar os dados do site cria um novo perfil. É preciso ligar **Authentication > Sign In / Providers > Allow anonymous sign-ins** no painel do Supabase. Enquanto isso estiver desligado, o site usa o armazenamento do navegador automaticamente e avisa na tela. A URL do projeto e a chave *publishable* ficam em `supabase.public.json` (podem ser públicas; nunca coloque a chave `service_role` ali).
 
 A reprodução completa é determinada pelo Spotify conforme conta, região e disponibilidade; o Embed pode oferecer apenas uma prévia. Nenhum áudio comercial é baixado ou hospedado pelo projeto.
 
@@ -46,23 +46,6 @@ git push
 
 O build copia somente os HTML, CSS, JavaScript público e a imagem de fallback. Não copia .env, SQL, dependências ou código do servidor. Os arquivos de docs/ são gerados a partir da raiz: se você os editar diretamente no GitHub, traga a mudança para a fonte antes do próximo build para não sobrescrevê-la.
 
-## Versão local com MySQL
-
-Preservada para o projeto acadêmico. Requisitos: Node.js 22+ recomendado, MySQL Server 8 ativo e internet.
-
-1. Instale as dependências: npm install.
-2. Copie .env.example como .env.
-3. Preencha DB_PASSWORD com a senha do MySQL instalado. Os padrões são DB_HOST=127.0.0.1, DB_PORT=3306, DB_USER=root e DB_NAME=popreport.
-4. Para busca e perfis diretamente do Spotify, preencha SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no .env. O segredo nunca deve ser enviado ao GitHub.
-5. Execute npm run db:setup e npm start.
-6. Abra http://127.0.0.1:3000.
-
-No PowerShell, use npm.cmd se houver bloqueio de scripts. iniciar.bat também instala, prepara o banco e inicia o servidor. O setup não muda a senha da sua instalação nem apaga tabelas existentes.
-
-O .env real é local e fica fora do repositório público. O iniciar.bat cria esse arquivo a partir do .env.example quando ele ainda não existe. Com SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET configurados, a busca principal, os perfis de artista, fotos, seguidores, discografia, faixas populares e o preenchimento do formulário vêm diretamente do Spotify. Sem as credenciais, a aplicação local mantém o fallback público para descoberta e o Spotify Embed por link continua disponível.
-
-No modo local, Músicas salvas lê o MySQL e o botão + grava artista, álbum e faixa com consultas parametrizadas e transação (ids de outras fontes, como a Deezer, são guardados com o prefixo `deezer:` na coluna `spotify_id`). O servidor escuta apenas em 127.0.0.1 e permite somente arquivos públicos definidos explicitamente.
-
 ## Estrutura
 
 - index.html, artist.html, library.html e form.html: interface fonte.
@@ -72,21 +55,17 @@ No modo local, Músicas salvas lê o MySQL e o botão + grava artista, álbum e 
 - supabase.public.json: URL e chave pública do projeto Supabase usadas no build do Pages.
 - script/music-data.js: provedor público de dados compartilhado entre Node e Pages.
 - script/runtime-config.js: modo local; o build gera o modo estático em docs/.
-- server.js e music.js: aplicação local.
 - docs/: arquivos publicados pelo Pages.
-- database/: criação, carga inicial, consultas e modelos acadêmicos.
+- supabase/: schema.sql (tabelas, RLS e RPC) e seed.sql (catálogo inicial migrado do antigo MySQL).
 - test/unit.cjs: testes sem rede nem banco (`npm run test:unit`), também executados no CI.
-- test/integration.cjs: testes locais de integração (MySQL + Deezer).
 
-## Banco e requisitos acadêmicos
+## Banco
 
-Mantidas as seis entidades principais (artista, genero, album, musica, usuario, playlist) e duas associativas (artista_genero e playlist_musica). PK/FK, NOT NULL, UNIQUE, relações 1:N e N:N, carga inicial e consultas estão preservadas.
-
-Os diagramas e o modelo conceitual editável estão em database/. O .mwb não estava presente no ZIP original. Se exigido pela atividade, gere o modelo nativo no MySQL Workbench via Database > Reverse Engineer e salve-o; as instruções originais estão incluídas.
+O banco é somente o Supabase (Postgres). O antigo MySQL foi removido; seus dados iniciais (12 artistas, 12 álbuns, 12 músicas, 10 gêneros) foram migrados e continuam no histórico do Git.
 
 ## Verificação
 
-npm run check valida a sintaxe e npm run test:unit roda o fluxo completo (artista → álbuns → faixa → playlist → +) com Deezer e Supabase simulados, sem rede. npm test executa os testes do servidor e requer o MySQL configurado e internet. Quando credenciais Spotify reais estão presentes, os testes também podem validar a busca nativa, o perfil por ID de 22 caracteres e os álbuns do artista. A publicação estática mantém o fallback sem segredos e o Spotify Embed. Consulte VERIFICACAO.md.
+npm run check valida a sintaxe e npm run test:unit roda o fluxo completo (artista → álbuns → faixa → playlist → +) com Deezer e Supabase simulados, sem rede. A publicação estática não usa segredos. Consulte VERIFICACAO.md.
 
 Serviços externos podem mudar ou ficar indisponíveis. Existem timeout e mensagens de falha; disponibilidade permanente não é prometida.
 
