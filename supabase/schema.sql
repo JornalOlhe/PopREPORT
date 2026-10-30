@@ -158,3 +158,21 @@ alter table public.tracks add column if not exists owner_id uuid references auth
 alter table public.genres add column if not exists owner_id uuid references auth.users(id) on delete set null default auth.uid();
 -- source passa a aceitar 'seed' e 'manual'; external_id e source têm padrão para linhas manuais.
 -- Políticas <tabela>_own_insert/update/delete: owner_id = auth.uid(). O RPC add_track_to_playlist grava o catálogo sem dono.
+
+-- Correções validadas por teste de CRUD com dois usuários (aplicadas como migrações no projeto):
+-- 1) permissões de tabela mínimas para o papel authenticated (sem acesso para anon; sem TRUNCATE/REFERENCES/TRIGGER)
+revoke all on public.artists, public.albums, public.tracks, public.genres, public.artist_genres, public.playlists, public.playlist_tracks, public.profiles from anon, authenticated;
+grant select, insert, update, delete on public.artists, public.albums, public.tracks, public.genres, public.playlists to authenticated;
+grant select, insert, delete on public.artist_genres to authenticated;
+grant select, delete on public.playlist_tracks to authenticated;
+grant select, insert, update on public.profiles to authenticated;
+-- 2) a política de INSERT em playlists contava a própria tabela (recursão infinita): limite de 100 passou para um gatilho
+drop policy if exists playlists_own_insert on public.playlists;
+create policy playlists_own_insert on public.playlists for insert to authenticated with check (owner_id = (select auth.uid()));
+create or replace function public.limit_playlists_per_user() returns trigger language plpgsql set search_path = '' as $$
+begin
+  if (select count(*) from public.playlists where owner_id = new.owner_id) >= 100 then raise exception 'playlist_limit' using errcode = '42501'; end if;
+  return new;
+end $$;
+revoke all on function public.limit_playlists_per_user() from public, anon, authenticated;
+create trigger playlists_limit_per_user before insert on public.playlists for each row execute function public.limit_playlists_per_user();
