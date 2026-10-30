@@ -46,6 +46,10 @@ git push
 
 O build copia somente os HTML, CSS, JavaScript público e a imagem de fallback. Não copia .env, SQL, dependências ou código do servidor. Os arquivos de docs/ são gerados a partir da raiz: se você os editar diretamente no GitHub, traga a mudança para a fonte antes do próximo build para não sobrescrevê-la.
 
+## CRUD
+
+A tela **Gerenciar** (após entrar) faz criar, listar, editar e apagar de playlists, artistas, álbuns, músicas e gêneros, além de editar o perfil. O catálogo inicial é só leitura; cada usuário altera apenas o que criou (políticas RLS no Supabase).
+
 ## Estrutura
 
 - index.html, artist.html, library.html e form.html: interface fonte.

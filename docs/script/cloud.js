@@ -75,7 +75,9 @@
   }
   function friendly(data) {
     const text = `${data?.message || ''} ${data?.hint || ''}`;
-    if (data?.code === '23505') return 'Você já tem uma playlist com esse nome.';
+    if (data?.code === '23505') return /profiles_display_name/.test(text + (data?.details || '')) ? 'Este nome de usuário já está em uso.' : /playlists/.test(text) ? 'Você já tem uma playlist com esse nome.' : 'Já existe um registro igual.';
+    if (data?.code === '23503') return 'Este registro está em uso por outro e não pode ser removido.';
+    if (data?.code === '23514') return 'Algum campo tem valor inválido (links precisam começar com https://).';
     if (/playlist_full/.test(text)) return 'Esta playlist atingiu o limite de 500 músicas.';
     if (/playlist_not_found/.test(text)) return 'Escolha uma playlist da sua coleção.';
     if (data?.code === '42501') return 'Limite de playlists atingido ou ação não permitida.';
@@ -141,5 +143,15 @@
     })();
     return readyPromise;
   }
-  root.PopReportCloud = { ready, signUp, signIn, signOut, collection, songs, saveProfile, createPlaylist, addTrack };
+    function userId() {
+    try { return JSON.parse(atob(String(session?.access_token || readSession()?.access_token || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub || null; } catch { return null; }
+  }
+  // CRUD genérico (a segurança fica nas políticas RLS do banco).
+  const crud = {
+    list: (table, select = '*') => rest(`${table}?select=${select}&order=id.desc&limit=200`),
+    create: (table, row) => rest(table, { method: 'POST', prefer: 'return=minimal', body: row }),
+    update: (table, id, row) => rest(`${table}?id=eq.${Number(id)}`, { method: 'PATCH', prefer: 'return=minimal', body: row }),
+    remove: (table, id) => rest(`${table}?id=eq.${Number(id)}`, { method: 'DELETE', prefer: 'return=minimal' })
+  };
+  root.PopReportCloud = { crud, userId, ready, signUp, signIn, signOut, collection, songs, saveProfile, createPlaylist, addTrack };
 })(globalThis);

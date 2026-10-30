@@ -8,7 +8,7 @@
     "preview:pages": "node scripts/preview-pages.cjs",
     "test": "node test/unit.cjs",
     "test:unit": "node test/unit.cjs",
-    "check": "node --check script/music-data.js && node --check script/api.js && node --check script/cloud.js && node --check script/auth.js && node --check test/unit.cjs && node --check script/runtime-config.js && node --check script/app.js && node --check script/form.js && node --check scripts/build-pages.cjs && node --check scripts/preview-pages.cjs"
+    "check": "node --check script/music-data.js && node --check script/api.js && node --check script/cloud.js && node --check script/auth.js && node --check script/crud.js && node --check test/unit.cjs && node --check script/runtime-config.js && node --check script/app.js && node --check script/form.js && node --check scripts/build-pages.cjs && node --check scripts/preview-pages.cjs"
   },
   "engines": {
     "node": ">=18"

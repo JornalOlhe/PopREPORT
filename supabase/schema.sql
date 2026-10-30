@@ -150,3 +150,11 @@ create or replace function public.username_available(p_name text) returns boolea
 $$;
 revoke all on function public.username_available(text) from public;
 grant execute on function public.username_available(text) to anon, authenticated;
+
+-- Migração "crud_catalog_ownership": cada usuário cria/edita/apaga só o que é seu (artistas, álbuns, músicas, gêneros).
+alter table public.artists add column if not exists owner_id uuid references auth.users(id) on delete set null default auth.uid();
+alter table public.albums add column if not exists owner_id uuid references auth.users(id) on delete set null default auth.uid();
+alter table public.tracks add column if not exists owner_id uuid references auth.users(id) on delete set null default auth.uid();
+alter table public.genres add column if not exists owner_id uuid references auth.users(id) on delete set null default auth.uid();
+-- source passa a aceitar 'seed' e 'manual'; external_id e source têm padrão para linhas manuais.
+-- Políticas <tabela>_own_insert/update/delete: owner_id = auth.uid(). O RPC add_track_to_playlist grava o catálogo sem dono.

@@ -12,7 +12,7 @@ const items = new Map();
 const originalPath=location.pathname;
 const originalQuery=new URLSearchParams(location.search);
 const appAddress=originalPath.replace(/[^/]*\.html$/, '') || '/';
-const validScreens = new Set(['discover','artist','library','form']);
+const validScreens = new Set(['discover','artist','library','form','manage']);
 const requestedScreen = originalQuery.get('screen');
 const entryScreen=validScreens.has(requestedScreen) ? requestedScreen : (({ 'artist.html':'artist','library.html':'library','form.html':'form' })[originalPath.split('/').pop()] || 'discover');
 const entryState=history.state?.screen ? history.state : {
@@ -35,15 +35,16 @@ function stateUrl(state={}){
 }
 history.replaceState(entryState,'',stateUrl(entryState));
 function showScreen(state,focus=true){
-  const screen=['discover','artist','library','form'].includes(state?.screen)?state.screen:'discover';
+  const screen=['discover','artist','library','form','manage'].includes(state?.screen)?state.screen:'discover';
   document.querySelectorAll('[data-screen-view]').forEach(s=>s.hidden=s.dataset.screenView!==screen);
   document.querySelectorAll('nav [data-screen]').forEach(a=>{if(a.dataset.screen===screen)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
-  document.title=({discover:'Descobrir',artist:'Artista',library:'Sua coleção',form:'Criar playlist'})[screen]+' — popreport';
+  document.title=({discover:'Descobrir',artist:'Artista',library:'Sua coleção',form:'Criar playlist',manage:'Gerenciar'})[screen]+' — popreport';
   if(dialog.open)dialog.close();
   window.PopReportBuilder?.close();
   if(screen==='artist')loadArtist(state.id); else profileVersion++;
   if(screen==='library')loadLibrary();
   if(screen==='form')window.PopReportBuilder?.open();
+  if(screen==='manage')window.PopReportCrud?.open();
   if(screen==='discover')loadRecent();
   if(focus){$('#main').focus({preventScroll:true});window.scrollTo({top:0});}
 }

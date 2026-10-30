@@ -135,6 +135,19 @@ function trackPayload(album, track, source = 'deezer') {
   assert.deepEqual(cloudSongs.map(s => [s.id, s.track, s.artist, s.album, s.duration, s.source, s.externalId]), [[55, 'From the Start', 'Laufey', 'Everything I Know About Love', 170, 'deezer', '111']]);
   console.log('PASS: Supabase — login por e-mail, criação de playlist, RPC de inclusão e leitura da coleção');
 
+  // ---- CRUD genérico ----
+  const seen = [];
+  const baseFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => { const u = new URL(String(input)); if (u.pathname.startsWith('/rest/v1/artists') || u.pathname.startsWith('/rest/v1/genres')) { seen.push([init.method || 'GET', u.pathname + u.search, init.body]); return { ok: true, status: 200, json: async () => [], text: async () => '[]' }; } return baseFetch(input, init); };
+  await PopReportCloud.crud.create('artists', { name: 'Nova' });
+  await PopReportCloud.crud.update('artists', 3, { name: 'Outra' });
+  await PopReportCloud.crud.remove('genres', 4);
+  await PopReportCloud.crud.list('artists');
+  assert.deepEqual(seen.map(s => s[0] + ' ' + s[1].split('?')[0] + (s[1].includes('?') ? '?' + s[1].split('?')[1].split('&')[0] : '')), ['POST /rest/v1/artists', 'PATCH /rest/v1/artists?id=eq.3', 'DELETE /rest/v1/genres?id=eq.4', 'GET /rest/v1/artists?select=*']);
+  assert.equal(seen[0][2], '{"name":"Nova"}');
+  console.log('PASS: CRUD — criar, listar, editar e apagar via REST autenticado');
+  globalThis.fetch = baseFetch;
+
   // ---- Login anônimo desativado: volta ao armazenamento do navegador ----
   globalThis.fetch = fakeFetch([[(u) => u.pathname === '/auth/v1/token', () => ({ status: 400, body: { msg: 'Invalid login credentials' } })]]);
   api = freshApp({ cloud: true });
