@@ -38,9 +38,30 @@ async function json(url) {
 }
 const dz = endpoint => json('https://api.deezer.com' + endpoint);
 const image = x => x.picture_xl || x.cover_xl || x.picture_big || x.cover_big || x.picture_medium || x.cover_medium || '';
-const artist = x => ({ id: String(x.id), kind: 'artist', name: x.name, image: image(x), url: x.link });
-const album = x => ({ id: String(x.id), kind: 'album', name: x.title, image: image(x), artist: x.artist?.name || '', artistId: x.artist?.id, releaseDate: x.release_date || '', url: x.link });
-const track = x => ({ id: String(x.id), kind: 'track', name: x.title, image: image(x.album || {}), artist: x.artist?.name || '', artistId: x.artist?.id, duration: x.duration, previewUrl: x.preview || '', url: x.link });
+const artist = x => ({ id: String(x.id), kind: 'artist', source: 'deezer', name: x.name, image: image(x), url: x.link });
+const album = x => ({ id: String(x.id), kind: 'album', source: 'deezer', name: x.title, image: image(x), artist: x.artist?.name || '', artistId: x.artist?.id == null ? '' : String(x.artist.id), releaseDate: x.release_date || '', totalTracks: x.nb_tracks || 0, recordType: x.record_type || '', url: x.link });
+const track = x => ({ id: String(x.id), kind: 'track', source: 'deezer', name: x.title, image: image(x.album || {}), artist: x.artist?.name || '', artistId: x.artist?.id == null ? '' : String(x.artist.id), album: x.album?.title || '', albumId: x.album?.id == null ? '' : String(x.album.id), releaseDate: x.album?.release_date || '', duration: x.duration, durationMs: Number(x.duration || 0) * 1000, explicit: Boolean(x.explicit_lyrics), trackNumber: x.track_position || 0, previewUrl: x.preview || '', url: x.link });
+// Mais recentes primeiro; lançamentos sem data vão para o fim.
+function sortByRelease(list, direction = 'desc') {
+  const sign = direction === 'asc' ? 1 : -1;
+  return [...list].sort((a, b) => {
+    if (!a.releaseDate !== !b.releaseDate) return a.releaseDate ? -1 : 1;
+    return sign * String(a.releaseDate).localeCompare(String(b.releaseDate)) || String(a.name).localeCompare(String(b.name));
+  });
+}
+async function discography(id) {
+  const found = [], seen = new Set();
+  for (let index = 0; index < 400; index += 100) {
+    const page = await dz(`/artist/${encodeURIComponent(id)}/albums?limit=100&index=${index}`);
+    for (const item of page.data || []) {
+      const entry = album({ ...item, artist: item.artist || { id } });
+      const key = `${entry.name.toLowerCase()}|${entry.releaseDate.slice(0, 4)}`;
+      if (!seen.has(key)) { seen.add(key); found.push(entry); }
+    }
+    if (!page.next) break;
+  }
+  return sortByRelease(found);
+}
 async function search(q, filter, offset) {
   const types = filter === 'all' ? ['artist', 'album', 'track'] : [filter];
   const result = { artists: [], albums: [], tracks: [], hasMore: false, source: 'Deezer' };
@@ -76,8 +97,8 @@ async function detail(kind, id, offset = 0) {
     return { ...artist(data), fans: data.nb_fan, albumCount: data.nb_album, albums: (val(0)?.data || []).map(album), tracks: (val(1)?.data || []).map(track), bio: val(2), hasMore: Boolean(val(0)?.next), albumsUnavailable: !val(0), topUnavailable: !val(1), source: 'Deezer' };
   }
   const data = await dz(`/${kind}/${id}`);
-  return kind === 'album' ? { ...album(data), tracks: (data.tracks?.data || []).map(t => track({ ...t, album: data })), totalTracks: data.nb_tracks } : track(data);
+  return kind === 'album' ? { ...album(data), tracks: (data.tracks?.data || []).map((t, i) => track({ ...t, track_position: t.track_position || i + 1, album: data, artist: t.artist || data.artist })), totalTracks: data.nb_tracks } : track(data);
 }
-if (typeof module !== 'undefined' && module.exports) module.exports = { search, detail, biography };
-else root.PopReportMusic = { search, detail, biography };
+if (typeof module !== 'undefined' && module.exports) module.exports = { search, detail, biography, discography, sortByRelease };
+else root.PopReportMusic = { search, detail, biography, discography, sortByRelease };
 })(globalThis);

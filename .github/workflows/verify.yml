@@ -29,6 +29,9 @@ jobs:
       - name: Check JavaScript syntax
         run: npm run check
 
+      - name: Unit tests (no network or database)
+        run: npm run test:unit
+
       - name: Rebuild GitHub Pages
         run: npm run build:pages
 
