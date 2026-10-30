@@ -5,7 +5,7 @@ let mysql = null;
 try { mysql = require('mysql2/promise'); } catch { mysql = null; }
 
 const ROOT = __dirname;
-const music = require('./music');
+const music = require('./script/music-data');
 
 function loadDotEnv() {
   for (const fileName of ['.env.local', '.env']) {
@@ -143,134 +143,6 @@ async function getDbStatus() {
       error: 'Sua coleção está temporariamente indisponível. Tente novamente em instantes.'
     };
   }
-}
-
-async function getDatabaseCatalog(limit = 12) {
-  const safeLimit = Math.max(1, Math.min(30, Number(limit) || 12));
-
-  const artists = await dbQuery(`
-    SELECT
-      a.id,
-      a.spotify_id AS spotifyId,
-      a.nome AS name,
-      a.imagem_url AS image,
-      a.pagina_local AS localUrl,
-      GROUP_CONCAT(DISTINCT g.nome ORDER BY g.nome SEPARATOR ' • ') AS genre,
-      COUNT(DISTINCT al.id) AS albumCount,
-      COUNT(DISTINCT m.id) AS trackCount
-    FROM artista a
-    LEFT JOIN artista_genero ag ON ag.artista_id = a.id
-    LEFT JOIN genero g ON g.id = ag.genero_id
-    LEFT JOIN album al ON al.artista_id = a.id
-    LEFT JOIN musica m ON m.album_id = al.id
-    GROUP BY a.id, a.spotify_id, a.nome, a.imagem_url, a.pagina_local
-    ORDER BY a.nome
-    LIMIT ${safeLimit}
-  `);
-
-  const albums = await dbQuery(`
-    SELECT
-      al.id,
-      al.spotify_id AS spotifyId,
-      al.titulo AS name,
-      al.imagem_url AS image,
-      al.ano_lancamento AS year,
-      al.link_spotify AS spotifyUrl,
-      a.nome AS artist,
-      COUNT(m.id) AS trackCount
-    FROM album al
-    JOIN artista a ON a.id = al.artista_id
-    LEFT JOIN musica m ON m.album_id = al.id
-    GROUP BY al.id, al.spotify_id, al.titulo, al.imagem_url, al.ano_lancamento, al.link_spotify, a.nome
-    ORDER BY al.criado_em DESC, al.id DESC
-    LIMIT ${safeLimit}
-  `);
-
-  const tracks = await dbQuery(`
-    SELECT
-      m.id,
-      m.spotify_id AS spotifyId,
-      m.titulo AS name,
-      m.duracao_ms AS durationMs,
-      m.explicita AS explicit,
-      m.link_spotify AS spotifyUrl,
-      m.criado_em AS createdAt,
-      al.titulo AS album,
-      al.imagem_url AS image,
-      a.nome AS artist
-    FROM musica m
-    JOIN album al ON al.id = m.album_id
-    JOIN artista a ON a.id = al.artista_id
-    ORDER BY m.criado_em DESC, m.id DESC
-    LIMIT ${safeLimit}
-  `);
-
-  return { artists, albums, tracks };
-}
-
-async function searchDatabase(q, filter = 'all') {
-  const term = `%${q}%`;
-  const result = { artists: [], albums: [], tracks: [] };
-
-  if (filter === 'all' || filter === 'artist') {
-    result.artists = await dbQuery(`
-      SELECT DISTINCT
-        a.id,
-        a.spotify_id AS spotifyId,
-        a.nome AS name,
-        a.imagem_url AS image,
-        a.pagina_local AS localUrl,
-        GROUP_CONCAT(DISTINCT g.nome ORDER BY g.nome SEPARATOR ' • ') AS genre
-      FROM artista a
-      LEFT JOIN artista_genero ag ON ag.artista_id = a.id
-      LEFT JOIN genero g ON g.id = ag.genero_id
-      WHERE a.nome LIKE ? OR g.nome LIKE ?
-      GROUP BY a.id, a.spotify_id, a.nome, a.imagem_url, a.pagina_local
-      ORDER BY a.nome
-      LIMIT 10
-    `, [term, term]);
-  }
-
-  if (filter === 'all' || filter === 'album') {
-    result.albums = await dbQuery(`
-      SELECT
-        al.id,
-        al.spotify_id AS spotifyId,
-        al.titulo AS name,
-        al.imagem_url AS image,
-        al.ano_lancamento AS year,
-        al.link_spotify AS spotifyUrl,
-        a.nome AS artist
-      FROM album al
-      JOIN artista a ON a.id = al.artista_id
-      WHERE al.titulo LIKE ? OR a.nome LIKE ?
-      ORDER BY al.titulo
-      LIMIT 10
-    `, [term, term]);
-  }
-
-  if (filter === 'all' || filter === 'track') {
-    result.tracks = await dbQuery(`
-      SELECT
-        m.id,
-        m.spotify_id AS spotifyId,
-        m.titulo AS name,
-        m.duracao_ms AS durationMs,
-        m.explicita AS explicit,
-        m.link_spotify AS spotifyUrl,
-        al.titulo AS album,
-        al.imagem_url AS image,
-        a.nome AS artist
-      FROM musica m
-      JOIN album al ON al.id = m.album_id
-      JOIN artista a ON a.id = al.artista_id
-      WHERE m.titulo LIKE ? OR al.titulo LIKE ? OR a.nome LIKE ?
-      ORDER BY m.titulo
-      LIMIT 10
-    `, [term, term, term]);
-  }
-
-  return result;
 }
 
 // -------------------------
@@ -555,7 +427,7 @@ async function saveTrackToDatabase({ artistInput, trackInput, albumInput, genreI
   // A temporary metadata outage must never replace an existing album or duration.
   if (!spotifyTrack) {
     const existing = await dbQuery(`SELECT m.id, m.titulo AS track, a.nome AS artist, a.spotify_id AS artistId,
-      al.titulo AS album, al.imagem_url AS image, ROUND(m.duracao_ms / 1000) AS duration,
+      al.titulo AS album, al.imagem_url AS image, CAST(ROUND(m.duracao_ms / 1000) AS UNSIGNED) AS duration,
       m.link_spotify AS spotifyUrl, m.criado_em AS createdAt,
       (SELECT GROUP_CONCAT(g.nome ORDER BY g.nome SEPARATOR ', ') FROM artista_genero ag JOIN genero g ON g.id=ag.genero_id WHERE ag.artista_id=a.id) AS genre
       FROM musica m JOIN album al ON al.id=m.album_id JOIN artista a ON a.id=al.artista_id
@@ -755,36 +627,6 @@ async function routeApi(req, res, url) {
     });
   }
 
-  if (req.method === 'GET' && url.pathname === '/api/db/status') {
-    return sendJson(res, 200, await getDbStatus());
-  }
-
-  if (req.method === 'GET' && url.pathname === '/api/catalogo') {
-    try {
-      const catalog = await getDatabaseCatalog(url.searchParams.get('limit'));
-      return sendJson(res, 200, { source: 'mysql', ...catalog });
-    } catch (error) {
-      console.error('[DB /api/catalogo]', error.message);
-      return sendJson(res, 503, { error: 'Não foi possível carregar sua coleção. Tente novamente em instantes.' });
-    }
-  }
-
-  if (req.method === 'GET' && url.pathname === '/api/catalogo/search') {
-    const q = String(url.searchParams.get('q') || '').trim();
-    const filter = String(url.searchParams.get('filter') || 'all');
-    if (q.length < 2) return sendJson(res, 400, { error: 'Digite pelo menos 2 caracteres.' });
-    try {
-      return sendJson(res, 200, { source: 'mysql', ...(await searchDatabase(q, filter)) });
-    } catch (error) {
-      console.error('[DB search]', error.message);
-      return sendJson(res, 503, { error: 'Busca local indisponível.' });
-    }
-  }
-
-  if (req.method === 'GET' && url.pathname === '/api/spotify/status') {
-    return sendJson(res, 200, { configured: spotifyConfigured(), market: process.env.SPOTIFY_MARKET || 'BR' });
-  }
-
   if (req.method === 'GET' && url.pathname === '/api/spotify/track') {
     const parsed = parseSpotifyUrl(url.searchParams.get('url'));
     if (!parsed || parsed.type !== 'track') return sendJson(res, 400, { error: 'Cole um link válido de faixa do Spotify.' });
@@ -810,23 +652,6 @@ async function routeApi(req, res, url) {
     }
   }
 
-  if (req.method === 'GET' && url.pathname === '/api/spotify/search') {
-    const q = String(url.searchParams.get('q') || '').trim();
-    const filter = String(url.searchParams.get('filter') || 'all');
-    const offset = Number(url.searchParams.get('offset') || 0);
-    if (q.length < 2) return sendJson(res, 400, { error: 'Digite pelo menos 2 caracteres.' });
-    if (q.length > 100) return sendJson(res, 400, { error: 'Busca muito longa.' });
-    try {
-      return sendJson(res, 200, await spotifySearch(q, filter, offset));
-    } catch (error) {
-      if (error.code === 'SPOTIFY_NOT_CONFIGURED' || error.message === 'SPOTIFY_NOT_CONFIGURED') {
-        return sendJson(res, 503, { error: 'A busca no Spotify está temporariamente indisponível. Tente novamente em instantes.' });
-      }
-      console.error('[Spotify search]', error.message);
-      return sendJson(res, 502, { error: 'Não foi possível consultar o Spotify agora.' });
-    }
-  }
-
   if (url.pathname === '/api/lista' && req.method === 'GET') {
     try {
       const rows = await dbQuery(`
@@ -837,7 +662,7 @@ async function routeApi(req, res, url) {
           m.titulo AS track,
           al.titulo AS album,
           al.imagem_url AS image,
-          ROUND(m.duracao_ms / 1000) AS duration,
+          CAST(ROUND(m.duracao_ms / 1000) AS UNSIGNED) AS duration,
           m.link_spotify AS spotifyUrl,
           m.spotify_id AS spotifyId,
           m.criado_em AS createdAt,

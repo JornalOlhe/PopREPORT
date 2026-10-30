@@ -67,6 +67,7 @@ form.addEventListener('submit', async event => {
     });
 
     setMessage('Música salva na sua coleção.', 'success');
+    toast('Música salva na sua coleção');
     previewName.textContent = `${data.track} — ${data.artist}${data.album ? ` • ${data.album}` : ''}`;
     previewFrame.src = data.embedUrl;
     preview.hidden = false;

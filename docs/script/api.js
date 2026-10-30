@@ -1,5 +1,12 @@
 (function (root) {
   'use strict';
+  // Abrir o index.html direto (file://) não funciona: o fetch precisa de um servidor.
+  if (location.protocol === 'file:') {
+    document.getElementById('fileWarning').hidden = false;
+    const status = document.getElementById('dbStatus');
+    status.dataset.state = 'error';
+    status.textContent = 'Sem servidor · rode npm start';
+  }
   const staticMode = root.POPREPORT_MODE === 'static';
   const storageKey = 'popreport.saved.v1';
   const collectionKey = 'popreport.collection.v1';

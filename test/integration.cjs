@@ -24,8 +24,9 @@ async function run(extra, callback) {
     assert.equal(state.spotify.configured,false);
     assert.equal(state.database.connected,true);
     console.log('PASS: MySQL conectado e Spotify opcional desativado');
-    for(const file of ['/.env','/server.js','/music.js','/database/popreport.sql','/node_modules/mysql2/package.json','/%2eenv','/script/../server.js']) assert.equal((await request(file)).status,404,file);
-    console.log('PASS: arquivos privados bloqueados');
+    for(const file of ['/.env','/server.js','/database/popreport.sql','/node_modules/mysql2/package.json','/%2eenv','/script/../server.js']) assert.equal((await request(file)).status,404,file);
+    for(const route of ['/api/catalogo','/api/db/status','/api/spotify/status','/api/spotify/search?q=abc']) assert.equal((await request(route)).status,404,route);
+    console.log('PASS: arquivos privados bloqueados e rotas antigas removidas');
     for(const query of ['q=x','q=abc&filter=invalid','q=abc&offset=-1','q=abc&offset=1.5','q='+ 'x'.repeat(101)]) assert.equal((await request('/api/music/search?'+query)).status,400);
     for(const link of ['https://evil.example/track/43iIQbw5hx986dUEZbr3eN','http://open.spotify.com/track/43iIQbw5hx986dUEZbr3eN','https://open.spotify.com/track/short','javascript:alert(1)']) assert.equal((await request('/api/embed?url='+encodeURIComponent(link))).status,400);
     const validTrackUrl='https://open.spotify.com/track/46rPcSaUj5jHxX60xWmsMD';
@@ -67,7 +68,7 @@ async function run(extra, callback) {
     try{await connection.execute('DELETE FROM playlist WHERE id=? AND nome=?',[playlist.id,playlistName]);}finally{await connection.end();}
     console.log('PASS: usuário, playlist, música, álbum, artista e gênero ligados; relação N:N sem duplicação');
   });
-  await run({DB_PORT:'1'},async request=>{const state=await(await request('/api/db/status')).json();assert.equal(state.connected,false);assert.equal((await request('/api/lista')).status,503);assert.equal((await request('/')).status,200);console.log('PASS: falha do banco é explícita e não impede a home');});
+  await run({DB_PORT:'1'},async request=>{const state=await(await request('/api/status')).json();assert.equal(state.database.connected,false);assert.equal((await request('/api/lista')).status,503);assert.equal((await request('/')).status,200);console.log('PASS: falha do banco é explícita e não impede a home');});
 
   if(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET){
     await run({},async request=>{

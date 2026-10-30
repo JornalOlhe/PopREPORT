@@ -10,7 +10,7 @@
     "preview:pages": "node scripts/preview-pages.cjs",
     "db:setup": "node database/setup.js",
     "test": "node test/integration.cjs",
-    "check": "node --check server.js && node --check music.js && node --check script/music-data.js && node --check script/api.js && node --check script/runtime-config.js && node --check script/app.js && node --check script/form.js && node --check scripts/build-pages.cjs && node --check scripts/preview-pages.cjs && node --check database/setup.js"
+    "check": "node --check server.js && node --check script/music-data.js && node --check script/api.js && node --check script/runtime-config.js && node --check script/app.js && node --check script/form.js && node --check scripts/build-pages.cjs && node --check scripts/preview-pages.cjs && node --check database/setup.js"
   },
   "engines": {
     "node": ">=18"

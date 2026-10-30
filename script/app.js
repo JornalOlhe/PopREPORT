@@ -33,7 +33,7 @@ function stateUrl(state={}){
   const query=params.toString();
   return appAddress+(query?`?${query}`:'');
 }
-history.replaceState(entryState,'',stateUrl(entryState));
+try { history.replaceState(entryState,'',stateUrl(entryState)); } catch { /* file:// não permite; o aviso já está na tela */ }
 function showScreen(state,focus=true){
   const screen=['discover','artist','library','form'].includes(state?.screen)?state.screen:'discover';
   document.querySelectorAll('[data-screen-view]').forEach(s=>s.hidden=s.dataset.screenView!==screen);
@@ -172,22 +172,11 @@ $('#audioFile').onchange = () => {
 };
 $('#localAudio').onerror = () => { $('#audioMessage').textContent = 'O navegador não conseguiu reproduzir este formato. Tente MP3 ou WAV.'; };
 
-const directPlayerButton = $('#directPlayer');
-if (directPlayerButton) {
-  directPlayerButton.textContent = 'Adicionar música';
-  const listenBox = directPlayerButton.closest('.listen-box');
-  if (listenBox) {
-    const title = listenBox.querySelector('h2');
-    const text = listenBox.querySelector('p');
-    if (title) title.textContent = 'Quer guardar uma música?';
-    if (text) text.textContent = 'Cole o link oficial do Spotify no formulário e salve na sua coleção.';
-  }
-  directPlayerButton.addEventListener('click', () => {
-    const state = { ...history.state, screen: 'form', id: null };
-    history.pushState(state, '', stateUrl(state));
-    showScreen(state);
-  });
-}
+$('#directPlayer').addEventListener('click', () => {
+  const state = { ...history.state, screen: 'form', id: null };
+  history.pushState(state, '', stateUrl(state));
+  showScreen(state);
+});
 
 if ($('#searchForm')) {
   let filter = 'all', offset = 0, controller, generation = 0, combined = {artists:[],albums:[],tracks:[]};
@@ -200,7 +189,7 @@ if ($('#searchForm')) {
     controller?.abort(); const current = ++generation; controller = new AbortController();
     const q = $('#query').value.trim();
     if (q.length < 2) { $('#results').replaceChildren(); $('#more').hidden = true; status('Digite pelo menos 2 caracteres.'); return; }
-    if (!more) { offset = 0; combined = {artists:[],albums:[],tracks:[]}; $('#results').replaceChildren(); }
+    if (!more) { offset = 0; combined = {artists:[],albums:[],tracks:[]}; $('#results').innerHTML = skeletons(); }
     $('#more').hidden = true; $('#results').setAttribute('aria-busy','true'); status('Buscando artistas, álbuns e músicas…');
     const nextState={ ...history.state, q, filter, screen:'discover' };
     history.replaceState(nextState,'',stateUrl(nextState));
@@ -212,6 +201,7 @@ if ($('#searchForm')) {
       const count = Object.values(combined).reduce((n,a)=>n+a.length,0);
       status(count ? `${count} resultados para “${q}”${data.source ? ` · ${data.source}` : ''}` : 'Nenhum resultado. Tente outro nome ou filtro.');
       $('#more').hidden = !data.hasMore || offset >= 996;
+      if (!more && count) $('.section-head').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
     } catch(e) { if (current === generation && e.name !== 'AbortError') { status(e.message,true); if (more) offset = Math.max(0,offset-12); } }
     finally { if(current === generation) $('#results').setAttribute('aria-busy','false'); }
   }
@@ -281,11 +271,51 @@ async function loadLibrary() {
 }
 async function collectionSubmit(form,message,body){
   const button=form.querySelector('button');button.disabled=true;message.textContent='Salvando…';
-  try{await PopReportAPI.request('/api/collection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});message.textContent='Salvo!';await loadLibrary();}
+  try{await PopReportAPI.request('/api/collection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});message.textContent='Salvo!';toast('Salvo com sucesso');if(body.action==='playlist')form.reset();await loadLibrary();}
   catch(e){message.textContent=e.message;}
   finally{button.disabled=false;}
 }
 $('#profileForm').onsubmit=e=>{e.preventDefault();collectionSubmit(e.currentTarget,$('#profileMessage'),{action:'profile',name:$('#displayName').value.trim()});};
 $('#playlistForm').onsubmit=e=>{e.preventDefault();collectionSubmit(e.currentTarget,$('#playlistMessage'),{action:'playlist',name:$('#playlistName').value.trim(),description:$('#playlistDescription').value.trim()});};
+
+
+// ---------- Interface: esqueleto, revelação ao rolar, avisos e status da conexão ----------
+document.documentElement.classList.add('js');
+function skeletons(count = 8) {
+  return `<section aria-hidden="true"><div class="grid">${'<article class="card skeleton"><div class="cover"></div><span></span><span></span></article>'.repeat(count)}</div></section>`;
+}
+let toastTimer;
+function toast(text, type = 'success') {
+  const el = $('#toast');
+  el.textContent = text; el.dataset.type = type; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+const revealer = 'IntersectionObserver' in window ? new IntersectionObserver(entries => {
+  for (const entry of entries) if (entry.isIntersecting) { entry.target.classList.add('in'); revealer.unobserve(entry.target); }
+}) : null;
+let revealQueued = false;
+new MutationObserver(() => {
+  if (revealQueued) return;
+  revealQueued = true;
+  requestAnimationFrame(() => {
+    revealQueued = false;
+    document.querySelectorAll('.card:not(.in):not(.skeleton),.track:not(.in)').forEach(el => revealer ? revealer.observe(el) : el.classList.add('in'));
+  });
+}).observe($('#main'), { childList: true, subtree: true });
+addEventListener('scroll', () => document.querySelector('header').classList.toggle('scrolled', scrollY > 8), { passive: true });
+
+async function loadConnection() {
+  const el = $('#dbStatus');
+  const show = (state, text) => { el.dataset.state = state; el.textContent = text; };
+  if (PopReportAPI.staticMode) return show('static', 'Modo navegador · coleção salva neste aparelho');
+  try {
+    const { database, spotify } = await api('/api/status');
+    const source = spotify.configured ? 'Spotify ativo' : 'busca pública';
+    show(database.connected ? 'ok' : 'error', database.connected
+      ? `Banco conectado · ${database.counts.musicas} músicas · ${source}`
+      : 'Banco desconectado · confira o MySQL e o .env.local');
+  } catch { show('error', location.protocol === 'file:' ? 'Sem servidor · rode npm start' : 'Servidor indisponível'); }
+}
+loadConnection();
 
 showScreen(entryState,false);
