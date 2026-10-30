@@ -1,8 +1,8 @@
 {
   "name": "popreport-web-bd",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "private": true,
-  "description": "PopReport - descoberta musical com Spotify, playlists e acervo MySQL",
+  "description": "PopReport - descoberta musical, playlists por artista/álbum e acervo (MySQL local / Supabase online)",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
@@ -10,7 +10,8 @@
     "preview:pages": "node scripts/preview-pages.cjs",
     "db:setup": "node database/setup.js",
     "test": "node test/integration.cjs",
-    "check": "node --check server.js && node --check music.js && node --check script/music-data.js && node --check script/api.js && node --check script/runtime-config.js && node --check script/app.js && node --check script/form.js && node --check scripts/build-pages.cjs && node --check scripts/preview-pages.cjs && node --check database/setup.js"
+    "check": "node --check server.js && node --check music.js && node --check script/music-data.js && node --check script/api.js && node --check script/cloud.js && node --check test/unit.cjs && node --check test/integration.cjs && node --check script/runtime-config.js && node --check script/app.js && node --check script/form.js && node --check scripts/build-pages.cjs && node --check scripts/preview-pages.cjs && node --check database/setup.js",
+    "test:unit": "node test/unit.cjs"
   },
   "engines": {
     "node": ">=18"

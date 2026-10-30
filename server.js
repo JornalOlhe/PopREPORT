@@ -334,6 +334,7 @@ function mapArtist(artist) {
   return {
     id: artist.id,
     kind: 'artist',
+    source: 'spotify',
     name: artist.name,
     image: artist.images?.[0]?.url || '',
     genres: (artist.genres || []).slice(0, 3),
@@ -348,12 +349,14 @@ function mapAlbum(album) {
   return {
     id: album.id,
     kind: 'album',
+    source: 'spotify',
     name: album.name,
     image: album.images?.[0]?.url || '',
     artist: primary?.name || '',
     artistId: primary?.id || '',
     artists: (album.artists || []).map(a => a.name),
     releaseDate: album.release_date || '',
+    recordType: album.album_type || '',
     totalTracks: album.total_tracks || 0,
     spotifyUrl: album.external_urls?.spotify || `https://open.spotify.com/album/${album.id}`,
     url: album.external_urls?.spotify || `https://open.spotify.com/album/${album.id}`
@@ -365,12 +368,16 @@ function mapTrack(track) {
   return {
     id: track.id,
     kind: 'track',
+    source: 'spotify',
     name: track.name,
     image: track.album?.images?.[0]?.url || '',
     artist: primary?.name || '',
     artistId: primary?.id || '',
     artists: (track.artists || []).map(a => a.name),
     album: track.album?.name || '',
+    albumId: track.album?.id || '',
+    releaseDate: track.album?.release_date || '',
+    trackNumber: track.track_number || 0,
     duration: Math.round(Number(track.duration_ms || 0) / 1000),
     durationMs: track.duration_ms || 0,
     explicit: Boolean(track.explicit),
@@ -439,6 +446,7 @@ async function spotifyDetail(kind, id, offset = 0) {
       album: {
         id: album.id,
         name: album.name,
+        release_date: album.release_date,
         images: album.images,
         external_urls: album.external_urls
       }
@@ -448,6 +456,18 @@ async function spotifyDetail(kind, id, offset = 0) {
 
   const track = await spotifyFetch(`/tracks/${safeId}?market=${encodeURIComponent(market)}`);
   return { ...mapTrack(track), source: 'Spotify' };
+}
+
+async function spotifyDiscography(id) {
+  const market = encodeURIComponent(process.env.SPOTIFY_MARKET || 'BR');
+  const seen = new Set();
+  const found = [];
+  for (let offset = 0; offset < 200; offset += 50) {
+    const page = await spotifyFetch(`/artists/${encodeURIComponent(id)}/albums?include_groups=album,single&market=${market}&limit=50&offset=${offset}`);
+    for (const item of page.items || []) if (item && !seen.has(item.id)) { seen.add(item.id); found.push(mapAlbum(item)); }
+    if (!page.next) break;
+  }
+  return music.sortByRelease(found);
 }
 
 function parseSpotifyUrl(raw) {
@@ -463,17 +483,6 @@ function parseSpotifyUrl(raw) {
   } catch {
     return null;
   }
-}
-
-async function spotifyTrackMetadata(trackId) {
-  const track = await spotifyFetch(`/tracks/${encodeURIComponent(trackId)}?market=${encodeURIComponent(process.env.SPOTIFY_MARKET || 'BR')}`);
-  const mainArtist = track.artists?.[0];
-  let artistDetails = null;
-  if (mainArtist?.id) {
-    try { artistDetails = await spotifyFetch(`/artists/${encodeURIComponent(mainArtist.id)}`); }
-    catch { artistDetails = null; }
-  }
-  return { track, mainArtist, artistDetails };
 }
 
 const spotifyTrackCache = new Map();
@@ -544,132 +553,87 @@ async function enrichLibraryRowsFromSpotify(rows) {
   }
 }
 
-async function saveTrackToDatabase({ artistInput, trackInput, albumInput, genreInput, parsed }) {
-  let meta = null;
-  try { meta = await spotifyTrackMetadata(parsed.id); }
-  catch (error) {
-    console.warn('[Spotify] Não foi possível enriquecer o cadastro:', error.message);
-  }
+const CATALOG_ID = /^[A-Za-z0-9]{1,32}$/;
+const catalogKey = (source, id) => (source === 'spotify' ? id : `${source}:${id}`);
+const splitCatalogKey = value => {
+  const text = String(value || '');
+  const at = text.indexOf(':');
+  return at > 0 ? { source: text.slice(0, at), id: text.slice(at + 1) } : { source: 'spotify', id: text };
+};
 
-  const spotifyTrack = meta?.track;
-  // A temporary metadata outage must never replace an existing album or duration.
-  if (!spotifyTrack) {
-    const existing = await dbQuery(`SELECT m.id, m.titulo AS track, a.nome AS artist, a.spotify_id AS artistId,
-      al.titulo AS album, al.imagem_url AS image, ROUND(m.duracao_ms / 1000) AS duration,
-      m.link_spotify AS spotifyUrl, m.criado_em AS createdAt,
-      (SELECT GROUP_CONCAT(g.nome ORDER BY g.nome SEPARATOR ', ') FROM artista_genero ag JOIN genero g ON g.id=ag.genero_id WHERE ag.artista_id=a.id) AS genre
-      FROM musica m JOIN album al ON al.id=m.album_id JOIN artista a ON a.id=al.artista_id
-      WHERE m.spotify_id=? LIMIT 1`, [parsed.id]);
-    if (existing.length) return { ...existing[0], spotifyId: parsed.id, persisted: true, embedUrl: `https://open.spotify.com/embed/track/${parsed.id}` };
-  }
-  const spotifyArtist = meta?.mainArtist;
-  const artistDetails = meta?.artistDetails;
-  const spotifyAlbum = spotifyTrack?.album;
+function parseCatalogTrack(input) {
+  const t = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const text = (value, max) => String(value ?? '').trim().slice(0, max);
+  const https = value => (/^https:\/\//.test(String(value || '')) ? text(value, 500) : null);
+  const track = {
+    source: t.source, trackId: String(t.trackId ?? ''), track: text(t.track, 180), artistId: String(t.artistId ?? ''), artist: text(t.artist, 120),
+    albumId: String(t.albumId ?? ''), album: text(t.album, 180), image: https(t.image), artistImage: https(t.artistImage),
+    releaseDate: /^\d{4}(-\d{2}(-\d{2})?)?$/.test(String(t.releaseDate || '')) ? String(t.releaseDate) : '', url: https(t.url),
+    durationMs: Math.max(0, Math.min(7200000, Math.round(Number(t.durationMs) || 0))), explicit: t.explicit ? 1 : 0,
+    trackNumber: Math.max(1, Math.min(999, Math.round(Number(t.trackNumber) || 1)))
+  };
+  if (!['deezer', 'spotify'].includes(track.source) || !track.track || !track.artist || !track.album) throw new Error('INVALID_TRACK');
+  if (![track.trackId, track.artistId, track.albumId].every(v => CATALOG_ID.test(v))) throw new Error('INVALID_TRACK');
+  if (track.source === 'spotify' && ![track.trackId, track.artistId, track.albumId].every(v => /^[A-Za-z0-9]{22}$/.test(v))) throw new Error('INVALID_TRACK');
+  return track;
+}
 
-  const artistName = (spotifyArtist?.name || artistInput).trim().slice(0, 120);
-  const artistSpotifyId = spotifyArtist?.id || null;
-  const artistImage = artistDetails?.images?.[0]?.url || spotifyAlbum?.images?.[0]?.url || null;
-  const genres = [...new Set([...(artistDetails?.genres || []), ...(genreInput ? [genreInput] : [])])].slice(0, 8);
+// Identifica artista, álbum e faixa no banco (ids de outras fontes levam o prefixo "deezer:").
+async function saveCatalogTrack(t) {
+  const artistKey = catalogKey(t.source, t.artistId);
+  const albumKey = catalogKey(t.source, t.albumId);
+  const trackKey = catalogKey(t.source, t.trackId);
+  const year = /^\d{4}/.test(t.releaseDate) ? Number(t.releaseDate.slice(0, 4)) : null;
+  const albumUrl = t.source === 'spotify' ? `https://open.spotify.com/album/${t.albumId}` : `https://www.deezer.com/album/${t.albumId}`;
+  const trackUrl = t.url || (t.source === 'spotify' ? `https://open.spotify.com/track/${t.trackId}` : `https://www.deezer.com/track/${t.trackId}`);
 
-  const albumName = (spotifyAlbum?.name || albumInput || 'Faixas cadastradas').trim().slice(0, 180);
-  const albumSpotifyId = spotifyAlbum?.id || null;
-  const albumImage = spotifyAlbum?.images?.[0]?.url || null;
-  const albumYear = /^\d{4}/.test(spotifyAlbum?.release_date || '') ? Number(spotifyAlbum.release_date.slice(0, 4)) : null;
-  const albumUrl = spotifyAlbum?.external_urls?.spotify || null;
-
-  const trackName = (spotifyTrack?.name || trackInput).trim().slice(0, 180);
-  const durationMs = Number(spotifyTrack?.duration_ms || 0);
-  const explicit = spotifyTrack?.explicit ? 1 : 0;
-  const trackNumber = Number(spotifyTrack?.track_number || 1);
-  const trackUrl = spotifyTrack?.external_urls?.spotify || parsed.canonical;
-
-  const pool = getDbPool();
-  const connection = await pool.getConnection();
+  const connection = await getDbPool().getConnection();
   try {
     await connection.beginTransaction();
-
     await connection.execute(`
-      INSERT INTO artista (spotify_id, nome, imagem_url)
-      VALUES (?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        spotify_id = COALESCE(VALUES(spotify_id), spotify_id),
-        imagem_url = COALESCE(VALUES(imagem_url), imagem_url)
-    `, [artistSpotifyId, artistName, artistImage]);
-
-    const [[artistRow]] = await connection.execute(
-      'SELECT id FROM artista WHERE nome = ? OR spotify_id = ? ORDER BY (spotify_id = ?) DESC LIMIT 1',
-      [artistName, artistSpotifyId, artistSpotifyId]
-    );
+      INSERT INTO artista (spotify_id, nome, imagem_url) VALUES (?, ?, ?)
+      ON DUPLICATE KEY UPDATE spotify_id = COALESCE(spotify_id, VALUES(spotify_id)), imagem_url = COALESCE(imagem_url, VALUES(imagem_url))
+    `, [artistKey, t.artist, t.artistImage]);
+    const [[artistRow]] = await connection.execute('SELECT id FROM artista WHERE spotify_id = ? OR nome = ? ORDER BY (spotify_id = ?) DESC LIMIT 1', [artistKey, t.artist, artistKey]);
     if (!artistRow) throw new Error('ARTIST_NOT_SAVED');
 
-    for (const rawGenre of genres) {
-      const genre = String(rawGenre).trim().slice(0, 80);
-      if (!genre) continue;
-      await connection.execute(
-        'INSERT INTO genero (nome) VALUES (?) ON DUPLICATE KEY UPDATE nome = VALUES(nome)',
-        [genre]
-      );
-      const [[genreRow]] = await connection.execute('SELECT id FROM genero WHERE nome = ? LIMIT 1', [genre]);
-      await connection.execute(
-        'INSERT IGNORE INTO artista_genero (artista_id, genero_id) VALUES (?, ?)',
-        [artistRow.id, genreRow.id]
-      );
-    }
-
     await connection.execute(`
-      INSERT INTO album (artista_id, spotify_id, titulo, imagem_url, ano_lancamento, link_spotify)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        spotify_id = COALESCE(VALUES(spotify_id), spotify_id),
-        imagem_url = COALESCE(VALUES(imagem_url), imagem_url),
-        ano_lancamento = COALESCE(VALUES(ano_lancamento), ano_lancamento),
-        link_spotify = COALESCE(VALUES(link_spotify), link_spotify)
-    `, [artistRow.id, albumSpotifyId, albumName, albumImage, albumYear, albumUrl]);
-
-    const [[albumRow]] = await connection.execute(`
-      SELECT id FROM album
-      WHERE (spotify_id IS NOT NULL AND spotify_id = ?) OR (artista_id = ? AND titulo = ?)
-      ORDER BY (spotify_id = ?) DESC
-      LIMIT 1
-    `, [albumSpotifyId, artistRow.id, albumName, albumSpotifyId]);
+      INSERT INTO album (artista_id, spotify_id, titulo, imagem_url, ano_lancamento, link_spotify) VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE spotify_id = COALESCE(spotify_id, VALUES(spotify_id)), imagem_url = COALESCE(imagem_url, VALUES(imagem_url)),
+        ano_lancamento = COALESCE(ano_lancamento, VALUES(ano_lancamento)), link_spotify = COALESCE(link_spotify, VALUES(link_spotify))
+    `, [artistRow.id, albumKey, t.album, t.image, year, albumUrl]);
+    const [[albumRow]] = await connection.execute('SELECT id FROM album WHERE spotify_id = ? OR (artista_id = ? AND titulo = ?) ORDER BY (spotify_id = ?) DESC LIMIT 1', [albumKey, artistRow.id, t.album, albumKey]);
     if (!albumRow) throw new Error('ALBUM_NOT_SAVED');
 
     await connection.execute(`
-      INSERT INTO musica (album_id, spotify_id, titulo, duracao_ms, explicita, numero_faixa, link_spotify)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        album_id = VALUES(album_id),
-        titulo = VALUES(titulo),
-        duracao_ms = VALUES(duracao_ms),
-        explicita = VALUES(explicita),
-        numero_faixa = VALUES(numero_faixa),
-        link_spotify = VALUES(link_spotify)
-    `, [albumRow.id, parsed.id, trackName, durationMs, explicit, trackNumber, trackUrl]);
-
-    const [[songRow]] = await connection.execute('SELECT id, criado_em FROM musica WHERE spotify_id = ? LIMIT 1', [parsed.id]);
+      INSERT INTO musica (album_id, spotify_id, titulo, duracao_ms, explicita, numero_faixa, link_spotify) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE titulo = VALUES(titulo), duracao_ms = VALUES(duracao_ms), explicita = VALUES(explicita), numero_faixa = VALUES(numero_faixa)
+    `, [albumRow.id, trackKey, t.track, t.durationMs, t.explicit, t.trackNumber, trackUrl]);
+    const [[songRow]] = await connection.execute('SELECT id FROM musica WHERE spotify_id = ? LIMIT 1', [trackKey]);
     await connection.commit();
-
-    return {
-      id: songRow.id,
-      spotifyId: parsed.id,
-      artist: artistName,
-      artistId: artistSpotifyId,
-      track: trackName,
-      album: albumName,
-      image: albumImage,
-      duration: Math.round(durationMs / 1000),
-      genre: genres.join(', '),
-      spotifyUrl: trackUrl,
-      embedUrl: `https://open.spotify.com/embed/track/${parsed.id}?utm_source=generator&theme=0`,
-      createdAt: songRow.criado_em,
-      persisted: true
-    };
+    return songRow.id;
   } catch (error) {
     await connection.rollback();
     throw error;
   } finally {
     connection.release();
   }
+}
+
+async function addSongToPlaylist(playlistId, songId) {
+  const connection = await getDbPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute('SELECT id FROM playlist WHERE id=? FOR UPDATE', [playlistId]);
+    const [[already]] = await connection.execute('SELECT musica_id FROM playlist_musica WHERE playlist_id=? AND musica_id=?', [playlistId, songId]);
+    if (!already) {
+      const [[position]] = await connection.execute('SELECT COALESCE(MAX(ordem),0)+1 AS nextOrder, COUNT(*) AS total FROM playlist_musica WHERE playlist_id=?', [playlistId]);
+      if (Number(position.total) >= 500) throw new Error('PLAYLIST_FULL');
+      await connection.execute('INSERT INTO playlist_musica (playlist_id,musica_id,ordem) VALUES (?,?,?)', [playlistId, songId, position.nextOrder]);
+    }
+    await connection.commit();
+  } catch (error) { await connection.rollback(); throw error; }
+  finally { connection.release(); }
 }
 
 // -------------------------
@@ -692,9 +656,9 @@ async function routeApi(req, res, url) {
         } else return sendJson(res, 400, { error: 'Ação inválida.' });
       } else if (req.method !== 'GET') return sendJson(res, 405, { error: 'Ação indisponível.' });
       const playlists = await dbQuery('SELECT id,nome AS name,descricao AS description FROM playlist WHERE usuario_id=? ORDER BY id', [visitor.id]);
-      const membership = await dbQuery('SELECT pm.playlist_id,pm.musica_id FROM playlist_musica pm JOIN playlist p ON p.id=pm.playlist_id WHERE p.usuario_id=? ORDER BY pm.ordem', [visitor.id]);
+      const membership = await dbQuery('SELECT pm.playlist_id,pm.musica_id,m.spotify_id AS externalKey FROM playlist_musica pm JOIN musica m ON m.id=pm.musica_id JOIN playlist p ON p.id=pm.playlist_id WHERE p.usuario_id=? ORDER BY pm.ordem', [visitor.id]);
       const [profile] = await dbQuery('SELECT nome AS name FROM usuario WHERE id=?', [visitor.id]);
-      return sendJson(res, req.method === 'POST' ? 201 : 200, { profile, playlists: playlists.map(p => ({...p,songIds:membership.filter(m => m.playlist_id===p.id).map(m => m.musica_id)})) });
+      return sendJson(res, req.method === 'POST' ? 201 : 200, { profile, playlists: playlists.map(p => { const own = membership.filter(m => m.playlist_id===p.id); return {...p,songIds:own.map(m => m.musica_id),trackKeys:own.map(m => { const k = splitCatalogKey(m.externalKey); return `${k.source}:${k.id}`; })}; }) });
     } catch (error) {
       if (error.code === 'ER_DUP_ENTRY') return sendJson(res, 409, { error: 'Você já tem uma playlist com esse nome.' });
       if (error.message === 'INVALID_JSON') return sendJson(res, 400, { error: 'Dados inválidos.' });
@@ -725,6 +689,19 @@ async function routeApi(req, res, url) {
     } catch (error) {
       console.error('[Music search]', error.message);
       return sendJson(res, 502, { error: spotifyConfigured() ? 'Não foi possível consultar o Spotify agora.' : 'Busca indisponível no momento. Verifique sua conexão e tente novamente.' });
+    }
+  }
+  const albumsMatch = url.pathname.match(/^\/api\/music\/artist\/([A-Za-z0-9]{22}|\d{1,16})\/albums$/);
+  if (req.method === 'GET' && albumsMatch) {
+    try {
+      const id = albumsMatch[1];
+      const isSpotifyId = /^[A-Za-z0-9]{22}$/.test(id);
+      if (isSpotifyId && !spotifyConfigured()) return sendJson(res, 503, { error: 'Configure o Spotify no arquivo .env para abrir este perfil.' });
+      const albums = isSpotifyId ? await spotifyDiscography(id) : await music.discography(id);
+      return sendJson(res, 200, { albums, source: isSpotifyId ? 'Spotify' : 'Deezer' });
+    } catch (error) {
+      console.error('[Music discography]', error.message);
+      return sendJson(res, 502, { error: 'Não foi possível carregar os álbuns deste artista. Tente novamente.' });
     }
   }
   const detailMatch = url.pathname.match(/^\/api\/music\/(artist|album|track)\/([A-Za-z0-9]{22}|\d{1,16})$/);
@@ -785,31 +762,6 @@ async function routeApi(req, res, url) {
     return sendJson(res, 200, { configured: spotifyConfigured(), market: process.env.SPOTIFY_MARKET || 'BR' });
   }
 
-  if (req.method === 'GET' && url.pathname === '/api/spotify/track') {
-    const parsed = parseSpotifyUrl(url.searchParams.get('url'));
-    if (!parsed || parsed.type !== 'track') return sendJson(res, 400, { error: 'Cole um link válido de faixa do Spotify.' });
-    if (!spotifyConfigured()) return sendJson(res, 503, { error: 'Configure SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no .env para preencher os dados automaticamente.' });
-    try {
-      const { track, mainArtist, artistDetails } = await spotifyTrackMetadata(parsed.id);
-      return sendJson(res, 200, {
-        spotifyId: track.id,
-        spotifyUrl: track.external_urls?.spotify || parsed.canonical,
-        track: track.name || '',
-        artist: mainArtist?.name || '',
-        artistId: mainArtist?.id || '',
-        album: track.album?.name || '',
-        image: track.album?.images?.[0]?.url || artistDetails?.images?.[0]?.url || '',
-        duration: Math.round(Number(track.duration_ms || 0) / 1000),
-        explicit: Boolean(track.explicit),
-        genre: (artistDetails?.genres || []).slice(0,3).join(', '),
-        source: 'Spotify'
-      });
-    } catch (error) {
-      console.error('[Spotify track metadata]', error.message);
-      return sendJson(res, 502, { error: 'Não foi possível carregar os dados dessa faixa no Spotify agora.' });
-    }
-  }
-
   if (req.method === 'GET' && url.pathname === '/api/spotify/search') {
     const q = String(url.searchParams.get('q') || '').trim();
     const filter = String(url.searchParams.get('filter') || 'all');
@@ -848,10 +800,20 @@ async function routeApi(req, res, url) {
         ORDER BY m.criado_em DESC, m.id DESC
         LIMIT 500
       `);
-      const publicRows = rows.map(row => ({
-        ...row,
-        embedUrl: `https://open.spotify.com/embed/track/${row.spotifyId}?utm_source=generator&theme=0`
-      }));
+      const publicRows = rows.map(row => {
+        const song = splitCatalogKey(row.spotifyId);
+        const artist = splitCatalogKey(row.artistId);
+        const isSpotify = song.source === 'spotify';
+        return {
+          ...row,
+          source: song.source,
+          externalId: song.id,
+          artistId: artist.id,
+          spotifyUrl: isSpotify ? row.spotifyUrl : '',
+          url: row.spotifyUrl,
+          embedUrl: isSpotify ? `https://open.spotify.com/embed/track/${song.id}?utm_source=generator&theme=0` : ''
+        };
+      });
       return sendJson(res, 200, await enrichLibraryRowsFromSpotify(publicRows));
     } catch (error) {
       console.error('[DB GET lista]', error.message);
@@ -859,52 +821,23 @@ async function routeApi(req, res, url) {
     }
   }
 
-  if (url.pathname === '/api/lista' && req.method === 'POST') {
+  if (url.pathname === '/api/playlist-tracks' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
-      if (!body || Array.isArray(body) || typeof body !== 'object') return sendJson(res, 400, { error: 'Preencha artista, música e link do Spotify.' });
-      const artist = String(body.artist || '').trim();
-      const track = String(body.track || '').trim();
-      const parsed = parseSpotifyUrl(body.spotifyUrl);
-      const albumInput = String(body.album || '').trim();
-      const genreInput = String(body.genre || '').trim();
-      const playlistId = body.playlistId == null || body.playlistId === '' ? null : Number(body.playlistId);
-      if (albumInput.length > 180 || genreInput.length > 80 || (playlistId !== null && (!Number.isSafeInteger(playlistId) || playlistId < 1))) return sendJson(res, 400, { error: 'Verifique álbum, gênero e playlist.' });
-      if (playlistId !== null) {
-        const owned = await dbQuery('SELECT p.id FROM playlist p JOIN usuario u ON u.id=p.usuario_id WHERE p.id=? AND u.email=?', [playlistId, 'visitante@popreport.local']);
-        if (!owned.length) return sendJson(res, 400, { error: 'Escolha uma playlist da sua coleção.' });
-      }
-
-      if (!artist || !track || !parsed || parsed.type !== 'track') {
-        return sendJson(res, 400, { error: 'Preencha artista, música e use uma URL válida de faixa do Spotify.' });
-      }
-      if (artist.length > 120 || track.length > 180) {
-        return sendJson(res, 400, { error: 'Artista ou música ultrapassou o tamanho permitido.' });
-      }
-
-      const item = await saveTrackToDatabase({ artistInput: artist, trackInput: track, albumInput, genreInput, parsed });
-      if (playlistId !== null) {
-        const connection = await getDbPool().getConnection();
-        try {
-          await connection.beginTransaction();
-          await connection.execute('SELECT id FROM playlist WHERE id=? FOR UPDATE', [playlistId]);
-          const [[already]] = await connection.execute('SELECT musica_id FROM playlist_musica WHERE playlist_id=? AND musica_id=?', [playlistId, item.id]);
-          if (!already) {
-            const [[position]] = await connection.execute('SELECT COALESCE(MAX(ordem),0)+1 AS nextOrder FROM playlist_musica WHERE playlist_id=?', [playlistId]);
-            await connection.execute('INSERT INTO playlist_musica (playlist_id,musica_id,ordem) VALUES (?,?,?)', [playlistId, item.id, position.nextOrder]);
-          }
-          await connection.commit();
-        } catch (error) { await connection.rollback(); throw error; }
-        finally { connection.release(); }
-      }
-      return sendJson(res, 201, item);
+      const playlistId = Number(body?.playlistId);
+      if (!Number.isSafeInteger(playlistId) || playlistId < 1) return sendJson(res, 400, { error: 'Escolha uma playlist da sua coleção.' });
+      const track = parseCatalogTrack(body?.track);
+      const owned = await dbQuery('SELECT p.id FROM playlist p JOIN usuario u ON u.id=p.usuario_id WHERE p.id=? AND u.email=?', [playlistId, 'visitante@popreport.local']);
+      if (!owned.length) return sendJson(res, 400, { error: 'Escolha uma playlist da sua coleção.' });
+      await addSongToPlaylist(playlistId, await saveCatalogTrack(track));
+      return sendJson(res, 201, { ok: true, key: `${track.source}:${track.trackId}` });
     } catch (error) {
+      if (error.message === 'INVALID_TRACK') return sendJson(res, 400, { error: 'Dados da música incompletos ou inválidos.' });
+      if (error.message === 'PLAYLIST_FULL') return sendJson(res, 400, { error: 'Esta playlist atingiu o limite de 500 músicas.' });
       if (error.message === 'INVALID_JSON') return sendJson(res, 400, { error: 'Não foi possível ler os dados enviados. Tente novamente.' });
       if (error.message === 'BODY_TOO_LARGE') return sendJson(res, 413, { error: 'Os dados enviados excedem o tamanho permitido.' });
-      console.error('[DB POST lista]', error.message);
-      return sendJson(res, 503, {
-        error: 'Não foi possível salvar a música. Tente novamente em instantes.'
-      });
+      console.error('[DB POST playlist-tracks]', error.message);
+      return sendJson(res, 503, { error: 'Não foi possível salvar a música. Tente novamente em instantes.' });
     }
   }
 
@@ -923,7 +856,7 @@ function serveStatic(req, res, url) {
   const legacy = { 'Taylor_Swift.html': 'Taylor Swift', 'Twenty_One_Pilots.html': 'Twenty One Pilots', 'Sombr.html': 'Sombr', 'Harry_Styles.html': 'Harry Styles', 'Dominic_Fike.html': 'Dominic Fike', 'Olivia_Dean.html': 'Olivia Dean', 'Milo_J.html': 'Milo J', 'Laufey.html': 'Laufey', 'Imagine_Dragons.html': 'Imagine Dragons', 'Billie_Eilish.html': 'Billie Eilish', 'Bad_Bunny.html': 'Bad Bunny', 'Bruno_Mars.html': 'Bruno Mars', 'Cor.html': 'Coldplay' };
   if (legacy[relative]) { res.writeHead(302, { Location: '/index.html?q=' + encodeURIComponent(legacy[relative]) + '&filter=artist' }); return res.end(); }
   // Explicit public allowlist: never expose .env, server code, SQL or dependencies.
-  const publicFile = /^(index\.html|artist\.html|form\.html|library\.html|app\.css|script\/(app|form|api|music-data|runtime-config)\.js|Imagens\/[a-zA-Z0-9_.-]+\.(png|jpg|jpeg|webp|svg))$/.test(relative);
+  const publicFile = /^(index\.html|artist\.html|form\.html|library\.html|app\.css|script\/(app|form|api|cloud|music-data|runtime-config)\.js|Imagens\/[a-zA-Z0-9_.-]+\.(png|jpg|jpeg|webp|svg))$/.test(relative);
   if (!publicFile || !['GET', 'HEAD'].includes(req.method)) {
     res.writeHead(404); return res.end('Arquivo não encontrado');
   }

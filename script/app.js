@@ -38,11 +38,12 @@ function showScreen(state,focus=true){
   const screen=['discover','artist','library','form'].includes(state?.screen)?state.screen:'discover';
   document.querySelectorAll('[data-screen-view]').forEach(s=>s.hidden=s.dataset.screenView!==screen);
   document.querySelectorAll('nav [data-screen]').forEach(a=>{if(a.dataset.screen===screen)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
-  document.title=({discover:'Descobrir',artist:'Artista',library:'Sua coleção',form:'Adicionar música'})[screen]+' — popreport';
+  document.title=({discover:'Descobrir',artist:'Artista',library:'Sua coleção',form:'Criar playlist'})[screen]+' — popreport';
   if(dialog.open)dialog.close();
-  $('#previewFrame').removeAttribute('src'); $('#songPreview').hidden=true;
+  window.PopReportBuilder?.close();
   if(screen==='artist')loadArtist(state.id); else profileVersion++;
-  if(screen==='library'||screen==='form')loadLibrary();
+  if(screen==='library')loadLibrary();
+  if(screen==='form')window.PopReportBuilder?.open();
   if(screen==='discover')loadRecent();
   if(focus){$('#main').focus({preventScroll:true});window.scrollTo({top:0});}
 }
@@ -68,6 +69,11 @@ function card(x) {
   return `<article class="card"><div class="card-art">${photo(x)}${play(x)}</div><h3>${esc(x.name)}</h3><p>${artistLink(x)}</p>${x.releaseDate ? `<p>${esc(x.releaseDate.slice(0,4))}</p>` : ''}</article>`;
 }
 function artistLink(x) { return x.artistId ? `<a href="./" data-artist="${esc(x.artistId)}">${esc(x.artist || 'Ver artista')}</a>` : esc(x.artist || ''); }
+// Converte uma linha salva (banco local, MySQL ou Supabase) no formato usado pelos cards e pelo player.
+function libraryItem(x) {
+  const source = x.source || 'spotify';
+  return { ...x, kind: 'track', name: x.track, id: x.externalId || x.spotifyId || x.id, source, spotifyUrl: source === 'spotify' ? (x.spotifyUrl || x.url || '') : '' };
+}
 function row(x, i) { return `<article class="track"><span class="number">${i + 1}</span>${photo(x)}<div class="track-info"><strong>${esc(x.name)}</strong><small>${artistLink(x)}${x.album ? ` · ${esc(x.album)}` : ''}${x.genre ? ` · ${esc(x.genre)}` : ''}${Number(x.duration) > 0 ? ` · ${Math.floor(x.duration/60)}:${String(x.duration%60).padStart(2,'0')}` : ''}</small></div>${play(x)}</article>`; }
 function status(text, error = false) { $('#status').textContent = text; $('#status').classList.toggle('error',error); }
 document.addEventListener('click', e => { const button = e.target.closest('[data-play]'); if (button) openPlayer(items.get(button.dataset.play)); });
@@ -140,6 +146,11 @@ async function openPlayer(item) {
     return;
   }
 
+  // Prévias da Deezer expiram: busca o link atualizado antes de tocar.
+  if (item.source === 'deezer' && item.kind === 'track' && !item.previewUrl) {
+    try { item.previewUrl = (await api('/api/music/track/' + encodeURIComponent(item.id))).previewUrl || ''; } catch { item.previewUrl = ''; }
+    if (version !== playerVersion || !dialog.open) return;
+  }
   if (item.previewUrl && await playPreview(item.previewUrl, version)) return;
 
   if (item.spotifyUrl) {
@@ -172,22 +183,11 @@ $('#audioFile').onchange = () => {
 };
 $('#localAudio').onerror = () => { $('#audioMessage').textContent = 'O navegador não conseguiu reproduzir este formato. Tente MP3 ou WAV.'; };
 
-const directPlayerButton = $('#directPlayer');
-if (directPlayerButton) {
-  directPlayerButton.textContent = 'Adicionar música';
-  const listenBox = directPlayerButton.closest('.listen-box');
-  if (listenBox) {
-    const title = listenBox.querySelector('h2');
-    const text = listenBox.querySelector('p');
-    if (title) title.textContent = 'Quer guardar uma música?';
-    if (text) text.textContent = 'Cole o link oficial do Spotify no formulário e salve na sua coleção.';
-  }
-  directPlayerButton.addEventListener('click', () => {
-    const state = { ...history.state, screen: 'form', id: null };
-    history.pushState(state, '', stateUrl(state));
-    showScreen(state);
-  });
-}
+$('#directPlayer')?.addEventListener('click', () => {
+  const state = { ...history.state, screen: 'form', id: null };
+  history.pushState(state, '', stateUrl(state));
+  showScreen(state);
+});
 
 if ($('#searchForm')) {
   let filter = 'all', offset = 0, controller, generation = 0, combined = {artists:[],albums:[],tracks:[]};
@@ -245,7 +245,7 @@ async function loadRecent(){
   try{
     const songs=await api('/api/lista');
     if(version!==recentVersion)return;
-    $('#recentSongs').innerHTML=songs.slice(0,4).map((x,i)=>row({...x,kind:'track',name:x.track,id:x.spotifyId||x.id},i)).join('');
+    $('#recentSongs').innerHTML=songs.slice(0,4).map((x,i)=>row(libraryItem(x),i)).join('');
     $('#recentCollection').hidden=!songs.length;
   }catch{$('#recentCollection').hidden=true;}
 }
@@ -261,9 +261,6 @@ async function loadLibrary() {
     const current=$('#playlistFilter').value || history.state?.playlistId || '';
     $('#playlistFilter').innerHTML='<option value="">Todas as músicas</option>'+options;
     if(collection.playlists.some(p=>String(p.id)===current))$('#playlistFilter').value=current;
-    const chosen=$('#playlistChoice').value;
-    $('#playlistChoice').innerHTML='<option value="">Sem playlist</option>'+options;
-    if(collection.playlists.some(p=>String(p.id)===chosen))$('#playlistChoice').value=chosen;
     function render(){
       const playlist=collection.playlists.find(p=>String(p.id)===$('#playlistFilter').value);
       if(history.state?.screen==='library'){
@@ -273,8 +270,8 @@ async function loadLibrary() {
       const selected=playlist?playlist.songIds.map(id=>songs.find(s=>String(s.id)===String(id))).filter(Boolean):songs;
       $('#playlistSummary').textContent=playlist?.description || '';
       $('#collectionTitle').textContent=playlist?.name || 'Sua coleção';
-      $('#library').innerHTML=`<div class="tracks">${selected.map((x,i)=>row({...x,kind:'track',name:x.track,id:x.spotifyId||x.id},i)).join('')}</div>`;
-      status(selected.length?`${selected.length} música${selected.length===1?'':'s'}.`:'Nenhuma música aqui ainda. Use Adicionar música.');
+      $('#library').innerHTML=`<div class="tracks">${selected.map((x,i)=>row(libraryItem(x),i)).join('')}</div>`;
+      status(selected.length?`${selected.length} música${selected.length===1?'':'s'}.`:'Nenhuma música aqui ainda. Use Criar playlist para adicionar.');
     }
     $('#playlistFilter').onchange=render; render();
   }catch(e){if(version===collectionVersion)status(e.message,true);}

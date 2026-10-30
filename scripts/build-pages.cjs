@@ -12,10 +12,14 @@ const files = [
   'script/app.js',
   'script/form.js',
   'script/api.js',
+  'script/cloud.js',
   'script/music-data.js'
 ];
 const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.gif', '.ico']);
-const csp = "default-src 'self'; script-src 'self' https://api.deezer.com; connect-src 'self' https://pt.wikipedia.org; img-src 'self' https:; frame-src https://open.spotify.com; media-src 'self' blob: https:; object-src 'none'; base-uri 'self'";
+// Chave pública (publishable) + URL do projeto: seguras no navegador; o acesso é protegido por RLS no banco.
+const supabase = JSON.parse(fs.readFileSync(path.join(root, 'supabase.public.json'), 'utf8'));
+if (!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(supabase.url) || !/^sb_publishable_[A-Za-z0-9_-]+$/.test(supabase.publishableKey)) throw new Error('supabase.public.json inválido: use a URL do projeto e a chave publishable.');
+const csp = `default-src 'self'; script-src 'self' https://api.deezer.com; connect-src 'self' https://pt.wikipedia.org ${supabase.url}; img-src 'self' https:; frame-src https://open.spotify.com; media-src 'self' blob: https:; object-src 'none'; base-uri 'self'`;
 
 function copyImageTree(source, target) {
   if (!fs.existsSync(source)) return;
@@ -45,7 +49,7 @@ for (const file of files) {
 
 copyImageTree(path.join(root, 'Imagens'), path.join(output, 'Imagens'));
 fs.mkdirSync(path.join(output, 'script'), { recursive: true });
-fs.writeFileSync(path.join(output, 'script/runtime-config.js'), "window.POPREPORT_MODE = 'static';\n");
+fs.writeFileSync(path.join(output, 'script/runtime-config.js'), `window.POPREPORT_MODE = 'static';\nwindow.POPREPORT_SUPABASE = ${JSON.stringify({ url: supabase.url, key: supabase.publishableKey })};\n`);
 fs.writeFileSync(path.join(output, '.nojekyll'), '');
 
 console.log('GitHub Pages regenerado em docs/ apenas com arquivos públicos e imagens permitidas.');
