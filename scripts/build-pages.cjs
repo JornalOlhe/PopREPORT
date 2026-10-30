@@ -13,6 +13,7 @@ const files = [
   'script/form.js',
   'script/api.js',
   'script/cloud.js',
+  'script/auth.js',
   'script/music-data.js'
 ];
 const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.gif', '.ico']);

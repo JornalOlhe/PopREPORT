@@ -100,7 +100,9 @@ function trackPayload(album, track, source = 'deezer') {
   // ---- Supabase (simulado): login anônimo, RPC e leitura ----
   const db = { playlists: [], links: [], rpc: [] };
   globalThis.fetch = fakeFetch([
-    [(u, i) => u.pathname === '/auth/v1/signup' && i.method === 'POST', () => ({ status: 200, body: { access_token: 'jwt-1', refresh_token: 'ref-1', expires_in: 3600 } })],
+    [(u, i) => u.pathname === '/auth/v1/token' && i.method === 'POST', () => ({ status: 200, body: { access_token: 'jwt-1', refresh_token: 'ref-1', expires_in: 3600 } })],
+    [(u, i) => u.pathname === '/rest/v1/rpc/username_available', (u, i) => ({ status: 200, body: JSON.parse(i.body).p_name !== 'Ocupado' })],
+    [(u, i) => u.pathname === '/auth/v1/signup' && i.method === 'POST', (u, i) => { const b = JSON.parse(i.body); return b.email === 'dup@x.com' ? { status: 200, body: { user: { identities: [] } } } : { status: 200, body: { access_token: 'jwt-1', refresh_token: 'ref-1', expires_in: 3600, user: { identities: [{}] } } }; }],
     [(u, i) => u.pathname === '/rest/v1/profiles' && i.method === 'GET', () => ({ status: 200, body: [] })],
     [(u, i) => u.pathname === '/rest/v1/playlists' && i.method === 'POST', (u, i) => { db.playlists.push({ id: 7, ...JSON.parse(i.body) }); return { status: 201 }; }],
     [(u, i) => u.pathname === '/rest/v1/playlists', () => ({ status: 200, body: db.playlists.map(p => ({ id: p.id, name: p.name, description: p.description })) })],
@@ -108,6 +110,14 @@ function trackPayload(album, track, source = 'deezer') {
     [(u, i) => u.pathname === '/rest/v1/playlist_tracks', () => ({ status: 200, body: db.links })]
   ]);
   api = freshApp({ cloud: true });
+  assert.equal(await api.storage(), 'local', 'sem login, usa o navegador');
+  await assert.rejects(PopReportCloud.signUp('Ocupado', 'a@x.com', 'senha1234'), /nome de usuário já está em uso/);
+  await assert.rejects(PopReportCloud.signUp('Ana', 'dup@x.com', 'senha1234'), /e-mail já tem uma conta/);
+  await assert.rejects(PopReportCloud.signUp('Ana', 'a@x.com', 'curta'), /8 a 72/);
+  await assert.rejects(PopReportCloud.signUp('Ana', 'invalido', 'senha1234'), /E-mail inválido/);
+  await PopReportCloud.signIn('a@x.com', 'senha1234');
+  api = freshApp({ cloud: true }); // recarrega: a sessão fica guardada no navegador
+  await globalThis.PopReportCloud.signIn('a@x.com', 'senha1234');
   assert.equal(await api.storage(), 'cloud');
   await post(api, '/api/collection', { action: 'playlist', name: 'Tardes de jazz', description: 'Calmas' });
   await post(api, '/api/playlist-tracks', { playlistId: 7, track: payload });
@@ -123,12 +133,13 @@ function trackPayload(album, track, source = 'deezer') {
   assert.deepEqual(collection.playlists[0], { id: 7, name: 'Tardes de jazz', description: 'Calmas', songIds: [55], trackKeys: ['deezer:111'] });
   const cloudSongs = await api.request('/api/lista');
   assert.deepEqual(cloudSongs.map(s => [s.id, s.track, s.artist, s.album, s.duration, s.source, s.externalId]), [[55, 'From the Start', 'Laufey', 'Everything I Know About Love', 170, 'deezer', '111']]);
-  console.log('PASS: Supabase — login anônimo, criação de playlist, RPC de inclusão e leitura da coleção');
+  console.log('PASS: Supabase — login por e-mail, criação de playlist, RPC de inclusão e leitura da coleção');
 
   // ---- Login anônimo desativado: volta ao armazenamento do navegador ----
-  globalThis.fetch = fakeFetch([[(u) => u.pathname === '/auth/v1/signup', () => ({ status: 422, body: { msg: 'Anonymous sign-ins are disabled' } })]]);
+  globalThis.fetch = fakeFetch([[(u) => u.pathname === '/auth/v1/token', () => ({ status: 400, body: { msg: 'Invalid login credentials' } })]]);
   api = freshApp({ cloud: true });
+  await assert.rejects(PopReportCloud.signIn('a@x.com', 'errada123'), /incorretos/);
   assert.equal(await api.storage(), 'local');
-  console.log('PASS: sem login anônimo no Supabase, o app usa o navegador sem quebrar');
+  console.log('PASS: cadastro (nome/e-mail únicos) e login; sem login o app usa o navegador');
   console.log('Todos os testes unitários passaram.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

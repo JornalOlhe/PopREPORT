@@ -2,8 +2,8 @@
 -- POPREPORT - SCHEMA SUPABASE (PostgreSQL) PARA O SITE ONLINE
 -- Já aplicado ao projeto como a migração "popreport_schema_playlists_catalog".
 -- Catálogo (artists/albums/tracks): leitura para usuários autenticados; escrita só pela
--- função add_track_to_playlist. Playlists: cada visitante (login anônimo) vê só as suas (RLS).
--- Requer: Authentication > Sign In / Providers > "Allow anonymous sign-ins" ligado.
+-- função add_track_to_playlist. Playlists: cada visitante (conta por e-mail/senha) vê só as suas (RLS).
+-- Contas: migração "email_password_accounts" (nome único, perfil automático, username_available).
 -- ============================================================================
 create table public.artists (
   id bigint generated always as identity primary key,
@@ -135,3 +135,18 @@ end;
 $$;
 revoke all on function public.add_track_to_playlist(bigint, jsonb) from public, anon;
 grant execute on function public.add_track_to_playlist(bigint, jsonb) to authenticated;
+
+-- Migração "email_password_accounts": nome de usuário único, perfil criado no cadastro e checagem de nome livre.
+create unique index if not exists profiles_display_name_uq on public.profiles (lower(btrim(display_name)));
+create or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  insert into public.profiles (owner_id, display_name) values (new.id, left(btrim(coalesce(new.raw_user_meta_data->>'name', 'Visitante')), 100)) on conflict do nothing;
+  return new;
+end $$;
+revoke all on function public.handle_new_user() from public, anon, authenticated;
+create trigger on_auth_user_created after insert on auth.users for each row execute function public.handle_new_user();
+create or replace function public.username_available(p_name text) returns boolean language sql stable security definer set search_path = '' as $$
+  select not exists (select 1 from public.profiles where lower(btrim(display_name)) = lower(btrim(p_name)));
+$$;
+revoke all on function public.username_available(text) from public;
+grant execute on function public.username_available(text) to anon, authenticated;

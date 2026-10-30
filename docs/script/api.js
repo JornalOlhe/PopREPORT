@@ -152,8 +152,8 @@
     const kind = await root.PopReportAPI.storage();
     for (const note of document.querySelectorAll('[data-online-note]')) {
       note.textContent = kind === 'cloud'
-        ? 'Suas playlists ficam no banco online do PopReport, ligadas a este navegador. Limpar os dados do site cria um novo perfil.'
-        : 'Suas playlists ficam salvas neste navegador. O banco online ainda não está ativo; limpar os dados do site remove a coleção.';
+        ? 'Suas playlists ficam salvas na sua conta do PopReport.'
+        : 'Você não entrou numa conta: as playlists ficam só neste navegador. Use Entrar para salvá-las online.';
       note.hidden = false;
     }
   });

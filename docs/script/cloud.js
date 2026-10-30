@@ -1,4 +1,4 @@
-// Cliente mínimo do Supabase (Auth anônima + PostgREST) para o PopReport online.
+// Cliente mínimo do Supabase (Auth por e-mail/senha + PostgREST) para o PopReport online.
 // Usa apenas a chave pública (publishable); as regras de acesso ficam no banco (RLS).
 (function (root) {
   'use strict';
@@ -38,8 +38,40 @@
       try { return keepSession(await auth('token?grant_type=refresh_token', { refresh_token: session.refresh_token })); }
       catch (error) { if (!error.status || error.status >= 500) throw error; session = null; }
     }
-    // Login anônimo: cada navegador recebe um perfil próprio, sem e-mail nem senha.
-    return keepSession(await auth('signup', { data: {}, gotrue_meta_security: {} }));
+    const error = new Error('login'); error.status = 401; throw error;
+  }
+  function authMessage(error) {
+    const t = String(error?.message || '');
+    if (/already registered|already been registered/i.test(t)) return 'Este e-mail já tem uma conta.';
+    if (/invalid login|invalid_credentials/i.test(t)) return 'E-mail ou senha incorretos.';
+    if (/email not confirmed/i.test(t)) return 'Confirme seu e-mail antes de entrar.';
+    if (/password/i.test(t)) return 'Use uma senha com pelo menos 8 caracteres.';
+    if (/valid email|invalid.*email/i.test(t)) return 'E-mail inválido.';
+    if (/rate|too many/i.test(t)) return 'Muitas tentativas. Aguarde um pouco.';
+    return 'Não foi possível concluir. Tente novamente.';
+  }
+  const emailOk = v => /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/.test(v) && v.length <= 254;
+  async function signUp(name, email, password) {
+    name = String(name || '').trim(); email = String(email || '').trim().toLowerCase();
+    if (name.length < 2 || name.length > 100) throw new Error('Use um nome de 2 a 100 caracteres.');
+    if (!emailOk(email)) throw new Error('E-mail inválido.');
+    if (String(password).length < 8 || String(password).length > 72) throw new Error('Use uma senha de 8 a 72 caracteres.');
+    const free = await fetch(`${cfg.url}/rest/v1/rpc/username_available`, { method: 'POST', headers: { apikey: cfg.key, 'Content-Type': 'application/json' }, body: JSON.stringify({ p_name: name }), signal: AbortSignal.timeout(10000) }).then(r => r.ok ? r.json() : true).catch(() => true);
+    if (free === false) throw new Error('Este nome de usuário já está em uso.');
+    let data;
+    try { data = await auth('signup', { email, password, data: { name } }); } catch (error) { throw new Error(authMessage(error)); }
+    if (data.user && Array.isArray(data.user.identities) && !data.user.identities.length) throw new Error('Este e-mail já tem uma conta.');
+    if (data.access_token) { keepSession(data); readyPromise = null; return { loggedIn: true }; }
+    return { loggedIn: false };
+  }
+  async function signIn(email, password) {
+    let data;
+    try { data = await auth('token?grant_type=password', { email: String(email || '').trim().toLowerCase(), password: String(password || '') }); } catch (error) { throw new Error(authMessage(error)); }
+    keepSession(data); readyPromise = null;
+  }
+  function signOut() {
+    session = null; readyPromise = null;
+    try { localStorage.removeItem(SESSION_KEY); } catch { /* nada a limpar */ }
   }
   function friendly(data) {
     const text = `${data?.message || ''} ${data?.hint || ''}`;
@@ -101,7 +133,7 @@
   const createPlaylist = (name, description) => rest('playlists', { method: 'POST', prefer: 'return=minimal', body: { name, description: description || null } });
   const addTrack = (playlistId, payload) => rest('rpc/add_track_to_playlist', { method: 'POST', body: { p_playlist_id: Number(playlistId), p: payload } });
 
-  // true quando há configuração pública e o login anônimo está habilitado no projeto.
+  // true quando há configuração pública e o usuário entrou com e-mail e senha.
   function ready() {
     readyPromise ||= (async () => {
       if (!cfg?.url || !cfg?.key) return false;
@@ -109,5 +141,5 @@
     })();
     return readyPromise;
   }
-  root.PopReportCloud = { ready, collection, songs, saveProfile, createPlaylist, addTrack };
+  root.PopReportCloud = { ready, signUp, signIn, signOut, collection, songs, saveProfile, createPlaylist, addTrack };
 })(globalThis);

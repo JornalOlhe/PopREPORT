@@ -384,3 +384,4 @@ footer{margin-top:46px}
 .hint.error,.form-message.error{color:var(--danger)}
 @media(max-width:800px){.inline-form{grid-template-columns:1fr}.inline-form .primary{width:100%}.album-preview{grid-template-columns:1fr;align-items:start}.album-preview .cover{width:min(240px,70%)}.steps li{padding-right:12px}}
 @media(prefers-reduced-motion:reduce){.builder .track,.skeleton .cover,.skeleton.line,.add-btn.just-added,.add-btn.is-busy svg{animation:none!important}.add-btn:hover:not(:disabled){transform:none}}
+.auth-dialog .link{background:none;border:0;color:var(--muted);text-decoration:underline;margin-top:14px;padding:0}.auth-dialog [hidden]{display:none}.auth-btn{cursor:pointer}
