@@ -14,20 +14,25 @@ function setMessage(text, type = '') {
 
 async function hydrateFromSpotify() {
   const spotifyUrl = spotifyInput.value.trim();
-  if (!spotifyUrl || PopReportAPI.staticMode) return;
+  if (!spotifyUrl) return;
   const version = ++metadataVersion;
-  setMessage('Lendo os dados oficiais da faixa no Spotify…');
+  form.setAttribute('aria-busy', 'true');
+  setMessage('Identificando a música…');
   try {
     const data = await PopReportAPI.request('/api/spotify/track?url=' + encodeURIComponent(spotifyUrl));
     if (version !== metadataVersion) return;
-    document.getElementById('artist').value = data.artist || '';
-    document.getElementById('track').value = data.track || '';
-    document.getElementById('album').value = data.album || '';
-    if (data.genre) document.getElementById('genre').value = data.genre;
-    setMessage('Dados preenchidos diretamente pelo Spotify.', 'success');
+    for (const [id, value] of [['artist', data.artist], ['track', data.track], ['album', data.album], ['genre', data.genre]]) {
+      if (value) document.getElementById(id).value = value;
+    }
+    const missing = [!data.artist && 'artista', !data.album && 'álbum', !data.genre && 'gênero'].filter(Boolean);
+    if (missing.length) setMessage(`Preenchi o que encontrei. Complete: ${missing.join(', ')}.`, 'success');
+    else if (data.verified) setMessage(`Artista, álbum e gênero preenchidos (${data.source}).`, 'success');
+    else setMessage(`Sugestão do ${data.source}. Confira o artista antes de salvar.`, 'success');
   } catch (error) {
     if (version !== metadataVersion) return;
     setMessage(error.message || 'Não foi possível preencher automaticamente. Você ainda pode salvar preenchendo os campos.', 'error');
+  } finally {
+    if (version === metadataVersion) form.removeAttribute('aria-busy');
   }
 }
 

@@ -83,7 +83,15 @@ O `database/popreport.sql` cadastra 12 artistas com fotos em `Imagens/` (`Benito
 
 ### Spotify (opcional)
 
-Para a busca usar a Spotify Web API em vez do Deezer, preencha `SPOTIFY_CLIENT_ID` e `SPOTIFY_CLIENT_SECRET` no `.env.local`. O segredo nunca deve ir para o GitHub. Ao colar o link de uma faixa no formulário, artista, música, álbum e gênero são preenchidos pelo Spotify.
+Para a busca usar a Spotify Web API em vez do Deezer, preencha `SPOTIFY_CLIENT_ID` e `SPOTIFY_CLIENT_SECRET` no `.env.local`. O segredo nunca deve ir para o GitHub. ### Colar o link e preencher sozinho
+
+No formulário **Adicionar música**, cole o link da faixa do Spotify: o PopReport identifica artista, música, álbum e gênero e preenche os campos (você pode editar antes de salvar).
+
+- **Com credenciais do Spotify:** os dados vêm da Spotify Web API. Se o artista não tiver gênero lá, o gênero vem do Deezer.
+- **Sem credenciais** (e também no site publicado): o título vem do oEmbed público do Spotify, o artista é lido do player embed (só no servidor local) e álbum e gênero vêm do Deezer. No site publicado o artista não é conhecido, então o resultado aparece como sugestão e a tela pede para conferir o artista.
+- Se algo não for encontrado, o formulário diz o que faltou para você completar.
+
+Essas fontes públicas não têm contrato de estabilidade e podem mudar; nesse caso o formulário continua funcionando com preenchimento manual.
 
 ## Entendendo o fetch neste projeto
 

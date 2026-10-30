@@ -54,6 +54,18 @@
       return root.PopReportMusic.detail(match[1], match[2], offset);
     }
     if (/^\/api\/resolve\/(artist|album|track)\/\d{1,16}$/.test(url.pathname)) return { spotifyUrl: null };
+    if (url.pathname === '/api/spotify/track') {
+      const parsed = spotifyLink(url.searchParams.get('url'));
+      if (parsed?.type !== 'track') throw new Error('Cole um link válido de faixa do Spotify.');
+      let oembed;
+      try {
+        const response = await fetch('https://open.spotify.com/oembed?url=' + encodeURIComponent(parsed.canonical), { signal: AbortSignal.timeout(10000) });
+        oembed = await response.json();
+      } catch { throw new Error('Não foi possível identificar esta música agora. Preencha os campos manualmente.'); }
+      const title = String(oembed.title || '').trim();
+      const match = title ? await root.PopReportMusic.identify(title).catch(() => null) : null;
+      return { spotifyId: parsed.id, spotifyUrl: parsed.canonical, track: title, artist: match?.artist || '', album: match?.album || '', genre: match?.genre || '', image: oembed.thumbnail_url || match?.image || '', verified: false, source: match ? 'Spotify + Deezer' : 'Spotify' };
+    }
     if (url.pathname === '/api/embed') {
       const parsed = spotifyLink(url.searchParams.get('url'));
       if (!parsed) throw new Error('Cole um link de artista, álbum ou faixa do Spotify.');

@@ -29,6 +29,9 @@ loadDotEnv();
 
 const PORT = Number(process.env.PORT || 3000);
 const DB_NAME = process.env.DB_NAME || 'popreport';
+// Endereços do player e do oEmbed do Spotify (trocados apenas nos testes).
+const SPOTIFY_OEMBED = process.env.SPOTIFY_OEMBED_URL || 'https://open.spotify.com/oembed';
+const SPOTIFY_EMBED = process.env.SPOTIFY_EMBED_URL || 'https://open.spotify.com/embed/track';
 const SPOTIFY_TIMEOUT_MS = Math.max(3000, Math.min(20000, Number(process.env.SPOTIFY_REQUEST_TIMEOUT_MS || 8000)));
 
 const MIME = {
@@ -416,6 +419,52 @@ async function enrichLibraryRowsFromSpotify(rows) {
   }
 }
 
+// Dados de uma faixa com a Spotify Web API; se o artista não tiver gênero, tenta o Deezer.
+async function spotifyTrackDetails(parsed) {
+  const { track, mainArtist, artistDetails } = await spotifyTrackMetadata(parsed.id);
+  let genre = (artistDetails?.genres || []).slice(0, 3).join(', ');
+  if (!genre) genre = (await music.identify(track.name, mainArtist?.name).catch(() => null))?.genre || '';
+  return {
+    spotifyId: track.id,
+    spotifyUrl: track.external_urls?.spotify || parsed.canonical,
+    track: track.name || '',
+    artist: mainArtist?.name || '',
+    artistId: mainArtist?.id || '',
+    album: track.album?.name || '',
+    image: track.album?.images?.[0]?.url || artistDetails?.images?.[0]?.url || '',
+    duration: Math.round(Number(track.duration_ms || 0) / 1000),
+    explicit: Boolean(track.explicit),
+    genre,
+    verified: true,
+    source: 'Spotify'
+  };
+}
+
+// Sem credenciais: título pelo oEmbed público, artista pelo player embed e álbum/gênero pelo Deezer.
+async function publicTrackDetails(parsed) {
+  const oembed = await (await fetch(`${SPOTIFY_OEMBED}?url=${encodeURIComponent(parsed.canonical)}`, { signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS) })).json();
+  const title = String(oembed.title || '').trim();
+  if (!title) throw new Error('oEmbed sem título');
+  let artist = '';
+  try {
+    const page = await (await fetch(`${SPOTIFY_EMBED}/${encodeURIComponent(parsed.id)}`, { signal: AbortSignal.timeout(SPOTIFY_TIMEOUT_MS) })).text();
+    const found = page.match(/"artists"\s*:\s*\[\s*\{\s*"name"\s*:\s*"([^"]+)"/);
+    if (found) artist = JSON.parse(`"${found[1]}"`);
+  } catch (error) { console.warn('[Spotify embed]', error.message); }
+  const match = await music.identify(title, artist).catch(() => null);
+  return {
+    spotifyId: parsed.id,
+    spotifyUrl: parsed.canonical,
+    track: title,
+    artist: artist || match?.artist || '',
+    album: match?.album || '',
+    image: oembed.thumbnail_url || match?.image || '',
+    genre: match?.genre || '',
+    verified: Boolean(match?.verified),
+    source: match ? 'Spotify + Deezer' : 'Spotify'
+  };
+}
+
 async function saveTrackToDatabase({ artistInput, trackInput, albumInput, genreInput, parsed }) {
   let meta = null;
   try { meta = await spotifyTrackMetadata(parsed.id); }
@@ -630,25 +679,11 @@ async function routeApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/spotify/track') {
     const parsed = parseSpotifyUrl(url.searchParams.get('url'));
     if (!parsed || parsed.type !== 'track') return sendJson(res, 400, { error: 'Cole um link válido de faixa do Spotify.' });
-    if (!spotifyConfigured()) return sendJson(res, 503, { error: 'Configure SPOTIFY_CLIENT_ID e SPOTIFY_CLIENT_SECRET no .env para preencher os dados automaticamente.' });
     try {
-      const { track, mainArtist, artistDetails } = await spotifyTrackMetadata(parsed.id);
-      return sendJson(res, 200, {
-        spotifyId: track.id,
-        spotifyUrl: track.external_urls?.spotify || parsed.canonical,
-        track: track.name || '',
-        artist: mainArtist?.name || '',
-        artistId: mainArtist?.id || '',
-        album: track.album?.name || '',
-        image: track.album?.images?.[0]?.url || artistDetails?.images?.[0]?.url || '',
-        duration: Math.round(Number(track.duration_ms || 0) / 1000),
-        explicit: Boolean(track.explicit),
-        genre: (artistDetails?.genres || []).slice(0,3).join(', '),
-        source: 'Spotify'
-      });
+      return sendJson(res, 200, spotifyConfigured() ? await spotifyTrackDetails(parsed) : await publicTrackDetails(parsed));
     } catch (error) {
-      console.error('[Spotify track metadata]', error.message);
-      return sendJson(res, 502, { error: 'Não foi possível carregar os dados dessa faixa no Spotify agora.' });
+      console.error('[Track metadata]', error.message);
+      return sendJson(res, 502, { error: 'Não foi possível identificar esta música agora. Preencha os campos manualmente.' });
     }
   }
 
