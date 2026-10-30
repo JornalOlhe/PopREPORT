@@ -385,3 +385,5 @@ footer{margin-top:46px}
 @media(max-width:800px){.inline-form{grid-template-columns:1fr}.inline-form .primary{width:100%}.album-preview{grid-template-columns:1fr;align-items:start}.album-preview .cover{width:min(240px,70%)}.steps li{padding-right:12px}}
 @media(prefers-reduced-motion:reduce){.builder .track,.skeleton .cover,.skeleton.line,.add-btn.just-added,.add-btn.is-busy svg{animation:none!important}.add-btn:hover:not(:disabled){transform:none}}
 .auth-dialog .link{background:none;border:0;color:var(--muted);text-decoration:underline;margin-top:14px;padding:0}.auth-dialog [hidden]{display:none}.auth-btn{cursor:pointer}
+
+.playlist-card{background:none;border:0;padding:0;text-align:left;color:inherit;cursor:pointer;transition:transform .2s}.playlist-card:hover{transform:translateY(-3px)}.playlist-card:hover h3{color:var(--accent)}.playlist-empty{display:flex;align-items:center;justify-content:center;font-size:44px;color:var(--muted);aspect-ratio:1;border-radius:12px;background:var(--panel)}.playlist-grid{margin-top:20px}#playlistBack{margin-bottom:14px}
