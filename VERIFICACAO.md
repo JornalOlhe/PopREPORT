@@ -3,6 +3,7 @@
 ## Fluxos cobertos
 
 - Criar playlist → buscar artista (foto) → álbuns por data de lançamento → prévia do álbum e das faixas → adicionar várias faixas com o botão +.
+- Em Playlists dá para remover uma música e apagar a playlist (navegador ou Supabase, protegido por RLS).
 - Cada faixa é identificada no Supabase por `source` + `external_id` (artista, álbum, faixa e vínculo com a playlist).
 - Sem entrar numa conta, o app usa o armazenamento do navegador e avisa na tela.
 - Nenhum segredo é publicado: o navegador usa só a chave *publishable* (RLS protege os dados).

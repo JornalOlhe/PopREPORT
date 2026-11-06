@@ -135,6 +135,9 @@
   const createPlaylist = (name, description) => rest('playlists', { method: 'POST', prefer: 'return=minimal', body: { name, description: description || null } });
   const addTrack = (playlistId, payload) => rest('rpc/add_track_to_playlist', { method: 'POST', body: { p_playlist_id: Number(playlistId), p: payload } });
 
+  const removeTrack = (playlistId, trackId) => rest(`playlist_tracks?playlist_id=eq.${Number(playlistId)}&track_id=eq.${Number(trackId)}`, { method: 'DELETE', prefer: 'return=minimal' });
+  const deletePlaylist = playlistId => rest(`playlists?id=eq.${Number(playlistId)}`, { method: 'DELETE', prefer: 'return=minimal' });
+
   // true quando há configuração pública e o usuário entrou com e-mail e senha.
   function ready() {
     readyPromise ||= (async () => {
@@ -153,5 +156,5 @@
     update: (table, id, row) => rest(`${table}?id=eq.${Number(id)}`, { method: 'PATCH', prefer: 'return=minimal', body: row }),
     remove: (table, id) => rest(`${table}?id=eq.${Number(id)}`, { method: 'DELETE', prefer: 'return=minimal' })
   };
-  root.PopReportCloud = { crud, userId, ready, signUp, signIn, signOut, collection, songs, saveProfile, createPlaylist, addTrack };
+  root.PopReportCloud = { crud, userId, ready, signUp, signIn, signOut, collection, songs, saveProfile, createPlaylist, addTrack, removeTrack, deletePlaylist };
 })(globalThis);

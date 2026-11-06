@@ -1,6 +1,5 @@
 (function (root) {
   'use strict';
-  const staticMode = root.POPREPORT_MODE === 'static';
   const storageKey = 'popreport.saved.v1';
   const collectionKey = 'popreport.collection.v1';
   const idPattern = /^[A-Za-z0-9]{1,32}$/;
@@ -41,6 +40,11 @@
     for (const key of ['image', 'artistImage', 'url']) if (out[key] && !/^https:\/\//.test(out[key])) out[key] = '';
     return out;
   }
+  // Apaga do navegador as músicas que não estão em nenhuma playlist.
+  function pruneSongs(data) {
+    const used = new Set(data.playlists.flatMap(p => p.songIds.map(String)));
+    try { localStorage.setItem(storageKey, JSON.stringify(storedSongs().filter(s => used.has(String(s.id))))); } catch { /* mantém como está */ }
+  }
   const localStore = {
     async collection() { const data = collectionData(); return { ...data, playlists: data.playlists.map(p => ({ ...p, trackKeys: localKeys(p) })) }; },
     async profile(name) { const data = collectionData(); data.profile.name = name; saveCollection(data); },
@@ -52,6 +56,20 @@
       saveCollection(data);
     },
     async songs() { return storedSongs(); },
+    async removeTrack(playlistId, trackId) {
+      const data = collectionData();
+      const playlist = data.playlists.find(p => String(p.id) === String(playlistId));
+      if (!playlist) throw new Error('Escolha uma playlist da sua coleção.');
+      playlist.songIds = playlist.songIds.filter(id => String(id) !== String(trackId));
+      saveCollection(data);
+      pruneSongs(data);
+    },
+    async deletePlaylist(playlistId) {
+      const data = collectionData();
+      data.playlists = data.playlists.filter(p => String(p.id) !== String(playlistId));
+      saveCollection(data);
+      pruneSongs(data);
+    },
     async add(playlistId, track) {
       const data = collectionData();
       const playlist = data.playlists.find(p => String(p.id) === String(playlistId));
@@ -70,7 +88,9 @@
     profile: name => root.PopReportCloud.saveProfile(name),
     playlist: (name, description) => root.PopReportCloud.createPlaylist(name, description),
     songs: () => root.PopReportCloud.songs(),
-    add: (playlistId, track) => root.PopReportCloud.addTrack(playlistId, track)
+    add: (playlistId, track) => root.PopReportCloud.addTrack(playlistId, track),
+    removeTrack: (playlistId, trackId) => root.PopReportCloud.removeTrack(playlistId, trackId),
+    deletePlaylist: playlistId => root.PopReportCloud.deletePlaylist(playlistId)
   };
   let storePromise;
   function store() {
@@ -106,7 +126,6 @@
     }
     if (albums) return { albums: await root.PopReportMusic.discography(albums[1]), source: 'Deezer' };
     if (match) return root.PopReportMusic.detail(match[1], match[2], pageOffset(url));
-    if (/^\/api\/resolve\/(artist|album|track)\/\d{1,16}$/.test(url.pathname)) return { spotifyUrl: null };
     if (url.pathname === '/api/embed') {
       const parsed = spotifyLink(url.searchParams.get('url'));
       if (!parsed) throw new Error('Link de artista, álbum ou faixa do Spotify inválido.');
@@ -117,6 +136,8 @@
       if (options.method === 'POST') {
         let input;
         try { input = JSON.parse(options.body); } catch { throw new Error('Dados inválidos.'); }
+        if (input?.action === 'removeTrack') { await db.removeTrack(input.playlistId, input.trackId); return db.collection(); }
+        if (input?.action === 'deletePlaylist') { await db.deletePlaylist(input.playlistId); return db.collection(); }
         const name = String(input?.name || '').trim();
         if (!name || name.length > (input?.action === 'profile' ? 100 : 120)) throw new Error('Preencha um nome dentro do limite permitido.');
         if (input.action === 'profile') await db.profile(name);
@@ -140,15 +161,10 @@
   }
   async function request(url, options = {}) {
     if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    if (staticMode) return staticRequest(url, options);
-    const response = await fetch(url, options);
-    let data;
-    try { data = await response.json(); } catch { throw new Error('Não foi possível carregar este conteúdo. Tente novamente.'); }
-    if (!response.ok) throw new Error(data.error || 'Não foi possível concluir esta ação. Tente novamente.');
-    return data;
+    return staticRequest(url, options);
   }
-  root.PopReportAPI = { request, staticMode, storage: () => (staticMode ? store().then(s => s.kind) : Promise.resolve('server')) };
-  if (staticMode && typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', async () => {
+  root.PopReportAPI = { request, storage: () => store().then(s => s.kind) };
+  if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', async () => {
     const kind = await root.PopReportAPI.storage();
     for (const note of document.querySelectorAll('[data-online-note]')) {
       note.textContent = kind === 'cloud'

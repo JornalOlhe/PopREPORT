@@ -95,6 +95,13 @@ function trackPayload(album, track, source = 'deezer') {
     await assert.rejects(post(api, '/api/playlist-tracks', { playlistId: playlist.id, track: bad }));
   }
   assert.equal(await api.storage(), 'local');
+  // remover música e apagar playlist
+  await post(api, '/api/collection', { action: 'removeTrack', playlistId: playlist.id, trackId: collection.playlists[0].songIds[0] });
+  collection = await api.request('/api/collection');
+  assert.equal(collection.playlists[0].songIds.length, 0);
+  assert.equal((await api.request('/api/lista')).length, 0, 'música sem playlist some do navegador');
+  await post(api, '/api/collection', { action: 'deletePlaylist', playlistId: playlist.id });
+  assert.equal((await api.request('/api/collection')).playlists.length, 0);
   console.log('PASS: playlist criada antes; + adiciona a faixa uma única vez; dados inválidos rejeitados');
 
   // ---- Supabase (simulado): login anônimo, RPC e leitura ----
@@ -133,6 +140,11 @@ function trackPayload(album, track, source = 'deezer') {
   assert.deepEqual(collection.playlists[0], { id: 7, name: 'Tardes de jazz', description: 'Calmas', songIds: [55], trackKeys: ['deezer:111'] });
   const cloudSongs = await api.request('/api/lista');
   assert.deepEqual(cloudSongs.map(s => [s.id, s.track, s.artist, s.album, s.duration, s.source, s.externalId]), [[55, 'From the Start', 'Laufey', 'Everything I Know About Love', 170, 'deezer', '111']]);
+  await post(api, '/api/collection', { action: 'removeTrack', playlistId: 7, trackId: 55 });
+  const removal = calls.filter(c => c.url.pathname === '/rest/v1/playlist_tracks' && c.init.method === 'DELETE').at(-1);
+  assert.equal(removal.url.search, '?playlist_id=eq.7&track_id=eq.55');
+  await post(api, '/api/collection', { action: 'deletePlaylist', playlistId: 7 });
+  assert.ok(calls.some(c => c.url.pathname === '/rest/v1/playlists' && c.url.search === '?id=eq.7' && c.init.method === 'DELETE'));
   console.log('PASS: Supabase — login por e-mail, criação de playlist, RPC de inclusão e leitura da coleção');
 
   // ---- CRUD genérico ----
