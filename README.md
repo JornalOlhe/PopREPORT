@@ -53,11 +53,15 @@ A tela **Gerenciar** (após entrar, em **Minha conta → Gerenciar meus dados**)
 ## Estrutura
 
 - index.html, artist.html, library.html e form.html: interface fonte.
-- script/app.js e script/form.js: navegação, pesquisa, player e o fluxo playlist → artista → álbum → faixas.
+- script/ui.js: auxiliares compartilhados (seletores, escape de HTML, cartões e linhas de música).
+- script/player.js, search.js, artist.js, library.js: player de prévias, busca, perfil do artista e playlists.
+- script/form.js: fluxo playlist → artista → álbum → faixas (uma etapa por vez).
+- script/app.js: roteador (histórico do navegador e troca de telas); carregado por último.
+- scripts/check.cjs: confere a sintaxe de todos os .js do projeto (`npm run check`).
 - script/api.js: camada de dados da publicação: Supabase quando há login, com reserva no navegador.
 - script/cloud.js: cliente mínimo do Supabase (Auth por e-mail e senha + PostgREST).
 - supabase.public.json: URL e chave pública do projeto Supabase usadas no build do Pages.
-- script/music-data.js: provedor público de dados compartilhado entre Node e Pages.
+- script/music-data.js: provedor público de dados (Deezer/Wikipédia) compartilhado entre Node e Pages. Imagens usam a versão de 500 px e ignoram a foto cinza "vazia" do Deezer.
 - script/runtime-config.js: modo local; o build gera o modo estático em docs/.
 - docs/: arquivos publicados pelo Pages.
 - supabase/: schema.sql (tabelas, RLS e RPC) e seed.sql (catálogo inicial migrado do antigo MySQL).

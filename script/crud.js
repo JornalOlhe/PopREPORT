@@ -3,7 +3,6 @@
   'use strict';
   const cloud = root.PopReportCloud;
   if (!cloud || !root.POPREPORT_SUPABASE) return;
-  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const https = v => !v || /^https:\/\//.test(v);
 
   // Cada entidade: tabela, campos do formulário e como mostrar a linha.
