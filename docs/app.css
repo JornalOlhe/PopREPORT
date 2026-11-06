@@ -387,3 +387,13 @@ footer{margin-top:46px}
 .auth-dialog .link{background:none;border:0;color:var(--muted);text-decoration:underline;margin-top:14px;padding:0}.auth-dialog [hidden]{display:none}.auth-btn{cursor:pointer}
 
 .playlist-card{background:none;border:0;padding:0;text-align:left;color:inherit;cursor:pointer;transition:transform .2s}.playlist-card:hover{transform:translateY(-3px)}.playlist-card:hover h3{color:var(--accent)}.playlist-empty{display:flex;align-items:center;justify-content:center;font-size:44px;color:var(--muted);aspect-ratio:1;border-radius:12px;background:var(--panel)}.playlist-grid{margin-top:20px}#playlistBack{margin-bottom:14px}
+
+/* === Simplificação da interface === */
+.section-head{justify-content:flex-end}
+.profile-edit{margin:36px 0 10px}
+.profile-edit .form-card{max-width:520px;margin-top:14px}
+.bio-more{margin:10px 0 0;padding:0;border:0}
+.bio-more summary{color:var(--accent-2);font-weight:700}
+.bio-more .bio{margin-top:10px}
+.artist-hero .pill{margin-top:6px}
+.auth-dialog #authUser{display:grid;gap:12px;margin-top:14px}

@@ -24,18 +24,13 @@
 
   const section = document.createElement('section');
   section.id = 'screen-manage'; section.dataset.screenView = 'manage'; section.hidden = true; section.className = 'manage';
-  section.innerHTML = `<section class="hero compact"><p class="eyebrow">Gerenciar</p><h1>Seus dados.</h1><p>Crie, edite e apague playlists, artistas, álbuns, músicas e gêneros. Você só altera o que é seu; o catálogo inicial é somente leitura.</p></section>
+  section.innerHTML = `<section class="hero compact"><h1>Seus dados.</h1><p class="hint">Você só altera o que é seu; o catálogo inicial é somente leitura.</p></section>
     <div class="filters" id="manageTabs" role="tablist"></div>
     <p id="manageMsg" role="status"></p>
     <form id="manageForm" class="form-card" novalidate></form>
     <div id="manageList"></div>`;
   document.querySelector('main').append(section);
   const $ = s => section.querySelector(s);
-
-  const link = document.createElement('a');
-  link.href = './'; link.dataset.screen = 'manage'; link.textContent = 'Gerenciar'; link.hidden = true;
-  document.querySelector('nav').insertBefore(link, document.querySelector('nav .auth-btn') || null);
-  cloud.ready().then(on => { link.hidden = !on; });
 
   function say(text, bad) { const m = $('#manageMsg'); m.textContent = text || ''; m.className = bad ? 'error' : text ? 'success' : ''; }
 
@@ -128,8 +123,4 @@
     } catch (err) { say(err.message, true); }
   });
   root.PopReportCrud = { open };
-  if (new URLSearchParams(location.search).get('screen') === 'manage') {
-    document.querySelectorAll('[data-screen-view]').forEach(s => { s.hidden = s !== section; });
-    open();
-  }
 })(globalThis);

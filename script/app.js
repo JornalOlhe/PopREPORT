@@ -35,7 +35,11 @@ function stateUrl(state={}){
 }
 history.replaceState(entryState,'',stateUrl(entryState));
 function showScreen(state,focus=true){
-  const screen=['discover','artist','library','form','manage'].includes(state?.screen)?state.screen:'discover';
+  let screen=validScreens.has(state?.screen)?state.screen:'discover';
+  if(!document.querySelector(`[data-screen-view="${screen}"]`)){
+    screen='discover';
+    const fixed={...state,screen};history.replaceState(fixed,'',stateUrl(fixed));
+  }
   document.querySelectorAll('[data-screen-view]').forEach(s=>s.hidden=s.dataset.screenView!==screen);
   document.querySelectorAll('nav [data-screen]').forEach(a=>{if(a.dataset.screen===screen)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   document.title=({discover:'Descobrir',artist:'Artista',library:'Playlists',form:'Criar playlist',manage:'Gerenciar'})[screen]+' — popreport';
@@ -75,13 +79,13 @@ function libraryItem(x) {
   const source = x.source || 'spotify';
   return { ...x, kind: 'track', name: x.track, id: x.externalId || x.spotifyId || x.id, source, spotifyUrl: source === 'spotify' ? (x.spotifyUrl || x.url || '') : '' };
 }
-function row(x, i) { return `<article class="track"><span class="number">${i + 1}</span>${photo(x)}<div class="track-info"><strong>${esc(x.name)}</strong><small>${artistLink(x)}${x.album ? ` · ${esc(x.album)}` : ''}${x.genre ? ` · ${esc(x.genre)}` : ''}${Number(x.duration) > 0 ? ` · ${Math.floor(x.duration/60)}:${String(x.duration%60).padStart(2,'0')}` : ''}</small></div>${play(x)}</article>`; }
+function row(x, i) { return `<article class="track"><span class="number">${i + 1}</span>${photo(x)}<div class="track-info"><strong>${esc(x.name)}</strong><small>${artistLink(x)}${x.album ? ` · ${esc(x.album)}` : ''}${x.genre ? ` · ${esc(x.genre)}` : ''}${Number(x.duration) > 0 ? ` · ${Math.floor(x.duration/60)}:${String(Math.round(x.duration%60)).padStart(2,'0')}` : ''}</small></div>${play(x)}</article>`; }
 function status(text, error = false) { $('#status').textContent = text; $('#status').classList.toggle('error',error); }
 document.addEventListener('click', e => { const button = e.target.closest('[data-play]'); if (button) openPlayer(items.get(button.dataset.play)); });
 
 // Player do catálogo: usa a prévia fornecida pela fonte musical quando existir.
 // O campo para colar link do Spotify fica somente no formulário de adicionar música.
-$('#playerRoot').innerHTML = `<dialog id="player" aria-labelledby="playerTitle"><button class="close" aria-label="Fechar player">×</button><h2 id="playerTitle">Ouvir no PopReport</h2><p class="hint">Prévia da faixa quando disponível. Caso contrário, o PopReport abre o player oficial do Spotify.</p><div id="embed"></div><p id="playerMessage" role="status"></p><a id="spotifySearch" class="source" target="_blank" rel="noopener">Abrir no Spotify</a><details><summary>Ouvir um arquivo próprio ou licenciado</summary><p class="hint">O arquivo fica apenas neste navegador. Use áudio próprio, domínio público ou uma licença compatível.</p><label><input type="checkbox" id="rights"> Tenho os direitos ou a licença para usar este áudio.</label><label for="audioFile">Arquivo de áudio</label><input id="audioFile" type="file" accept="audio/*" disabled><audio id="localAudio" controls hidden></audio><p id="audioMessage" role="status" class="hint"></p></details></dialog>`;
+$('#playerRoot').innerHTML = `<dialog id="player" aria-labelledby="playerTitle"><button class="close" aria-label="Fechar player">×</button><h2 id="playerTitle">Ouvir no PopReport</h2><div id="embed"></div><p id="playerMessage" role="status"></p><a id="spotifySearch" class="source" target="_blank" rel="noopener">Abrir no Spotify</a><details><summary>Ouvir um arquivo próprio</summary><label><input type="checkbox" id="rights"> Tenho os direitos ou a licença para usar este áudio.</label><label for="audioFile">Arquivo de áudio</label><input id="audioFile" type="file" accept="audio/*" disabled><audio id="localAudio" controls hidden></audio><p id="audioMessage" role="status" class="hint"></p></details></dialog>`;
 let playerVersion = 0, audioUrl;
 const dialog = $('#player');
 dialog.querySelector('.close').onclick = () => dialog.close();
@@ -184,12 +188,6 @@ $('#audioFile').onchange = () => {
 };
 $('#localAudio').onerror = () => { $('#audioMessage').textContent = 'O navegador não conseguiu reproduzir este formato. Tente MP3 ou WAV.'; };
 
-$('#directPlayer')?.addEventListener('click', () => {
-  const state = { ...history.state, screen: 'form', id: null };
-  history.pushState(state, '', stateUrl(state));
-  showScreen(state);
-});
-
 if ($('#searchForm')) {
   let filter = 'all', offset = 0, controller, generation = 0, combined = {artists:[],albums:[],tracks:[]};
   const initial = new URLSearchParams({q:history.state?.q || '',filter:history.state?.filter || 'all'});
@@ -199,10 +197,11 @@ if ($('#searchForm')) {
   filters();
   async function search(more = false) {
     controller?.abort(); const current = ++generation; controller = new AbortController();
+    $('#resultsSection').hidden = false;
     const q = $('#query').value.trim();
     if (q.length < 2) { $('#results').replaceChildren(); $('#more').hidden = true; status('Digite pelo menos 2 caracteres.'); return; }
     if (!more) { offset = 0; combined = {artists:[],albums:[],tracks:[]}; $('#results').replaceChildren(); }
-    $('#more').hidden = true; $('#results').setAttribute('aria-busy','true'); status('Buscando artistas, álbuns e músicas…');
+    $('#more').hidden = true; $('#results').setAttribute('aria-busy','true'); status('Buscando…');
     const nextState={ ...history.state, q, filter, screen:'discover' };
     history.replaceState(nextState,'',stateUrl(nextState));
     try {
@@ -224,6 +223,15 @@ if ($('#searchForm')) {
   if ($('#query').value) search();
 }
 let profileVersion = 0;
+// Biografia: mostra só o primeiro parágrafo; o resto fica atrás de "Ler mais".
+function bioHtml(data) {
+  const text = String(data.bio?.text || '').trim();
+  if (!text) return `<h2>Sobre ${esc(data.name)}</h2><p class="hint">Biografia indisponível.</p>`;
+  const [first, ...rest] = text.split(/\n+/).filter(Boolean);
+  const more = rest.join('\n');
+  const link = data.bio.url ? `<a class="source" href="${esc(safeUrl(data.bio.url))}" target="_blank" rel="noopener">${esc(data.bio.source)} · Artigo original</a>` : '';
+  return `<h2>Sobre ${esc(data.name)}</h2><p class="bio">${esc(first)}</p>${more ? `<details class="bio-more"><summary>Ler mais</summary><p class="bio">${esc(more)}</p></details>` : ''}${link}`;
+}
 async function loadArtist(id) {
     const version = ++profileVersion;
     const status = (text, error=false) => { $('#artistStatus').textContent=text; $('#artistStatus').classList.toggle('error',error); };
@@ -233,10 +241,10 @@ async function loadArtist(id) {
       const data = await api('/api/music/artist/'+id);
       if(version !== profileVersion) return;
       document.title = `${data.name} — PopReport`;
-      $('#profile').innerHTML = `<section class="artist-hero">${photo(data,true)}<div><p>Artista</p><h1>${esc(data.name)}</h1><p>${Number(data.followers ?? data.fans ?? 0).toLocaleString('pt-BR')} ${data.source === 'Spotify' ? 'seguidores' : 'fãs'}${data.source ? ` · Dados do ${esc(data.source)}` : ''} · ${Number(data.albumCount || 0)} lançamentos</p><button class="pill" data-play="${esc(remember(data))}">Ouvir no Spotify</button></div></section><div class="profile-layout"><section><h2>Sobre ${esc(data.name)}</h2><p class="bio">${esc(data.bio?.text || 'Biografia indisponível. Explore a discografia e as músicas abaixo.')}</p>${data.bio ? `<a class="source" href="${esc(safeUrl(data.bio.url))}" target="_blank" rel="noopener">${esc(data.bio.source)} · Ler artigo original</a>`:''}<h2>Discografia</h2><p class="hint">Álbuns e singles.</p><div class="grid" id="discography">${data.albums.map(card).join('')}</div><p id="albumStatus" role="status">${data.albumsUnavailable ? 'Discografia temporariamente indisponível. Recarregue para tentar novamente.' : !data.albums.length ? 'Nenhum lançamento disponível.' : ''}</p><button class="pill" id="moreAlbums" ${data.hasMore?'':'hidden'}>Mais lançamentos</button></section><aside><h2>Mais ouvidas</h2><p class="hint">Popular no ${esc(data.source || 'Spotify')}.</p><div class="tracks">${data.tracks.map(row).join('')}</div>${!data.tracks.length?'<p class="hint">Seleção indisponível para este artista.</p>':''}</aside></div>`;
+      $('#profile').innerHTML = `<section class="artist-hero">${photo(data,true)}<div><h1>${esc(data.name)}</h1><p>${Number(data.followers ?? data.fans ?? 0).toLocaleString('pt-BR')} ${data.source === 'Spotify' ? 'seguidores' : 'fãs'} · ${Number(data.albumCount || 0)} lançamentos</p><button class="pill" data-play="${esc(remember(data))}">Ouvir</button></div></section><div class="profile-layout"><section>${bioHtml(data)}<h2>Discografia</h2><div class="grid" id="discography">${data.albums.map(card).join('')}</div><p id="albumStatus" role="status">${data.albumsUnavailable ? 'Discografia temporariamente indisponível. Recarregue para tentar novamente.' : !data.albums.length ? 'Nenhum lançamento disponível.' : ''}</p><button class="pill" id="moreAlbums" ${data.hasMore?'':'hidden'}>Mais lançamentos</button></section><aside><h2>Mais ouvidas</h2><div class="tracks">${data.tracks.slice(0,5).map(row).join('')}</div>${!data.tracks.length?'<p class="hint">Seleção indisponível para este artista.</p>':''}</aside></div>`;
       let albumOffset = 0;
       $('#moreAlbums').onclick = async()=>{const b=$('#moreAlbums');b.disabled=true;try{const next=await api(`/api/music/artist/${id}?offset=${albumOffset+24}`);if(version!==profileVersion)return;if(next.albumsUnavailable)throw new Error('Não foi possível carregar mais lançamentos. Tente novamente.');albumOffset+=24;$('#discography').insertAdjacentHTML('beforeend',next.albums.map(card).join(''));b.hidden=!next.hasMore||albumOffset>=984;$('#albumStatus').textContent='';}catch(e){if(version===profileVersion)$('#albumStatus').textContent=e.message;}finally{b.disabled=false;}};
-      status(data.source ? `Perfil carregado do ${data.source}.` : '');
+      status('');
     } catch(e) { if(version===profileVersion)status(e.message,true); }
 }
 let collectionVersion=0;
@@ -274,7 +282,7 @@ async function loadLibrary() {
           const first=p.songIds.map(id=>songs.find(s=>String(s.id)===String(id))).find(Boolean);
           const cover=first?.image?`<img class="cover" src="${esc(safeUrl(first.image))}" alt="" loading="lazy">`:`<div class="cover playlist-empty" aria-hidden="true">♪</div>`;
           return `<button type="button" class="card playlist-card" data-open="${esc(p.id)}">${cover}<h3>${esc(p.name)}</h3><p>${p.songIds.length} música${p.songIds.length===1?'':'s'}</p></button>`;}).join('')}</div>`:'';
-        status(collection.playlists.length?`${collection.playlists.length} playlist${collection.playlists.length===1?'':'s'}. Abra uma para ver as músicas.`:'Você ainda não tem playlists. Crie uma abaixo ou em Criar playlist.');
+        status(collection.playlists.length?'':'Você ainda não tem playlists. Use Criar playlist para começar.');
         return;
       }
       const selected=playlist.songIds.map(id=>songs.find(s=>String(s.id)===String(id))).filter(Boolean);
@@ -295,6 +303,5 @@ async function collectionSubmit(form,message,body){
   finally{button.disabled=false;}
 }
 $('#profileForm').onsubmit=e=>{e.preventDefault();collectionSubmit(e.currentTarget,$('#profileMessage'),{action:'profile',name:$('#displayName').value.trim()});};
-$('#playlistForm').onsubmit=e=>{e.preventDefault();collectionSubmit(e.currentTarget,$('#playlistMessage'),{action:'playlist',name:$('#playlistName').value.trim(),description:$('#playlistDescription').value.trim()});};
 
 showScreen(entryState,false);
