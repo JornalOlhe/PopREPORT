@@ -77,7 +77,7 @@
       if (playlist.songIds.length >= 500) throw new Error('Esta playlist atingiu o limite de 500 músicas.');
       const id = track.source === 'spotify' ? track.trackId : `${track.source}:${track.trackId}`;
       const existing = storedSongs().find(s => s.id === id);
-      const item = { ...existing, id, source: track.source, externalId: track.trackId, artistId: track.artistId, artist: track.artist, track: track.track, album: track.album, image: track.image, duration: Math.round(track.durationMs / 1000), url: track.url, genre: existing?.genre || '', createdAt: existing?.createdAt || new Date().toISOString() };
+      const item = { ...existing, id, source: track.source, externalId: track.trackId, artistId: track.artistId, artist: track.artist, track: track.track, album: track.album, albumId: track.albumId, artistImage: track.artistImage, releaseDate: track.releaseDate, explicit: track.explicit, trackNumber: track.trackNumber, image: track.image, duration: Math.round(track.durationMs / 1000), url: track.url, genre: existing?.genre || '', createdAt: existing?.createdAt || new Date().toISOString() };
       try { localStorage.setItem(storageKey, JSON.stringify([item, ...storedSongs().filter(s => s.id !== id)].slice(0, 500))); }
       catch { throw new Error('Não foi possível salvar neste navegador. Verifique se o armazenamento está permitido.'); }
       if (!playlist.songIds.includes(id)) { playlist.songIds.push(id); saveCollection(data); }
@@ -163,13 +163,39 @@
     if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     return staticRequest(url, options);
   }
-  root.PopReportAPI = { request, storage: () => store().then(s => s.kind) };
+  // Ao entrar, leva para a conta as playlists criadas neste navegador (só as músicas que guardaram o álbum).
+  async function importLocal() {
+    let data;
+    try { data = collectionData(); } catch { return { playlists: 0, tracks: 0, skipped: 0 }; }
+    if (!data.playlists.length) return { playlists: 0, tracks: 0, skipped: 0 };
+    const cloud = root.PopReportCloud;
+    const songs = new Map(storedSongs().map(s => [String(s.id), s]));
+    const find = async name => (await cloud.collection()).playlists.find(p => p.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+    let tracks = 0, skipped = 0, failed = 0;
+    for (const playlist of data.playlists) {
+      let remote = await find(playlist.name);
+      if (!remote) { await cloud.createPlaylist(playlist.name, playlist.description || ''); remote = await find(playlist.name); }
+      if (!remote) { failed++; continue; }
+      for (const id of playlist.songIds) {
+        const s = songs.get(String(id));
+        if (!s?.albumId) { skipped++; continue; }
+        try {
+          const track = validTrack({ source: s.source, trackId: s.externalId, track: s.track, durationMs: Number(s.duration || 0) * 1000, explicit: s.explicit, trackNumber: s.trackNumber, url: s.url, artistId: s.artistId, artist: s.artist, artistImage: s.artistImage, albumId: s.albumId, album: s.album, image: s.image, releaseDate: s.releaseDate });
+          await cloud.addTrack(remote.id, track);
+          tracks++;
+        } catch { failed++; }
+      }
+    }
+    if (!failed) { try { localStorage.removeItem(collectionKey); localStorage.removeItem(storageKey); } catch { /* nada a limpar */ } }
+    return { playlists: data.playlists.length, tracks, skipped };
+  }
+  root.PopReportAPI = { request, importLocal, storage: () => store().then(s => s.kind) };
   if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', async () => {
     const kind = await root.PopReportAPI.storage();
     for (const note of document.querySelectorAll('[data-online-note]')) {
       note.textContent = kind === 'cloud'
         ? 'Suas playlists ficam salvas na sua conta do PopReport.'
-        : 'Você não entrou numa conta: as playlists ficam só neste navegador. Use Entrar para salvá-las online.';
+        : 'Você não entrou numa conta: as playlists ficam só neste navegador e vão para a conta quando você entrar.';
       note.hidden = false;
     }
   });

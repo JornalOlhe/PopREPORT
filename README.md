@@ -46,9 +46,9 @@ git push
 
 O build copia somente os HTML, CSS, JavaScript público e a imagem de fallback. Não copia .env, SQL, dependências ou código do servidor. Os arquivos de docs/ são gerados a partir da raiz: se você os editar diretamente no GitHub, traga a mudança para a fonte antes do próximo build para não sobrescrevê-la.
 
-## CRUD
+## Playlists
 
-A tela **Gerenciar** (após entrar, em **Minha conta → Gerenciar meus dados**) faz criar, listar, editar e apagar de playlists, artistas, álbuns, músicas e gêneros, além de editar o perfil. O catálogo inicial é só leitura; cada usuário altera apenas o que criou (políticas RLS no Supabase).
+Em **Playlists** dá para abrir cada playlist, remover músicas e apagar a playlist. Cada pessoa altera apenas o que criou (RLS no Supabase). Ao entrar, as playlists criadas antes neste navegador são levadas para a conta (só as músicas adicionadas depois desta versão, que guardam o álbum).
 
 ## Estrutura
 
@@ -92,6 +92,6 @@ A navegação usa uma única aplicação em index.html; artista.html, library.ht
 
 O nome visual é popreport. O endereço popreport.github.io depende de possuir uma conta/organização com o nome popreport e o repositório popreport.github.io; renomear o site ou este repositório não altera o proprietário JornalOlhe. A publicação atual continua em https://jornalolhe.github.io/PopREPORT/.
 
-O PDF exige no mínimo cinco entidades; foram mantidas seis principais e duas associativas. A interface utiliza perfil, playlists, músicas, álbuns, artistas e gêneros. Sem entrar numa conta, perfil, playlists e músicas ficam apenas no navegador; com login, ficam no Supabase.
+O PDF exige no mínimo cinco entidades; foram mantidas seis principais e duas associativas. A interface utiliza perfil, playlists, músicas, álbuns e artistas; gêneros existem só no banco. Sem entrar numa conta, perfil, playlists e músicas ficam apenas no navegador; com login, ficam no Supabase.
 
 O SQL completo do banco (tabelas, RLS e RPC) está em supabase/schema.sql.
