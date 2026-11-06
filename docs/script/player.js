@@ -72,13 +72,5 @@ async function openPlayer(item) {
     return;
   }
 
-  $('#playerMessage').textContent = 'Procurando esta música no Spotify…';
-  try {
-    const data = await api(`/api/resolve/${item.kind}/${encodeURIComponent(item.id)}`);
-    if (version !== playerVersion || !dialog.open) return;
-    if (data.spotifyUrl) await embedLink(data.spotifyUrl, version);
-    else $('#playerMessage').textContent = item.kind === 'track' ? 'Prévia indisponível para esta faixa. Você pode abri-la no Spotify.' : 'Abra este conteúdo no Spotify.';
-  } catch {
-    if (version === playerVersion) $('#playerMessage').textContent = item.kind === 'track' ? 'Prévia indisponível para esta faixa. Você pode abri-la no Spotify.' : 'Abra este conteúdo no Spotify.';
-  }
+  $('#playerMessage').textContent = item.kind === 'track' ? 'Prévia indisponível para esta faixa. Você pode abri-la no Spotify.' : 'Abra este conteúdo no Spotify.';
 }

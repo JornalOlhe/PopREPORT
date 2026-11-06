@@ -1,2 +1,2 @@
-// A publicação gera sua própria configuração. O modo local usa o servidor.
-window.POPREPORT_MODE = 'server';
+// Configuração do site. A publicação (npm run build:pages) gera a sua própria, com o Supabase.
+window.POPREPORT_MODE = 'static';

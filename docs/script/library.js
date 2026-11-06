@@ -1,5 +1,6 @@
 // Tela Playlists: lista de playlists, músicas de cada uma, coleção recente e nome do perfil.
 'use strict';
+const collectionPost=body=>PopReportAPI.request('/api/collection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 let collectionVersion=0;
 let recentVersion=0;
 async function loadRecent(){
@@ -28,6 +29,7 @@ async function loadLibrary() {
     function render(){
       const playlist=collection.playlists.find(p=>String(p.id)===sel);
       $('#playlistBack').hidden=!playlist;
+      $('#playlistDelete').hidden=!playlist;
       if(!playlist){
         $('#collectionTitle').textContent='Suas playlists';
         $('#playlistSummary').textContent='';
@@ -35,16 +37,34 @@ async function loadLibrary() {
           const first=p.songIds.map(id=>songs.find(s=>String(s.id)===String(id))).find(s=>s?.image);
           const cover=first?.image?`<img class="cover" src="${esc(safeUrl(first.image))}" alt="" loading="lazy">`:`<div class="cover playlist-empty" aria-hidden="true">♪</div>`;
           return `<button type="button" class="card playlist-card" data-open="${esc(p.id)}">${cover}<h3>${esc(p.name)}</h3><p>${p.songIds.length} música${p.songIds.length===1?'':'s'}</p></button>`;}).join('')}</div>`:'';
-        status(collection.playlists.length?'':'Você ainda não tem playlists. Use Criar playlist para começar.');
+        status(collection.playlists.length?'':'Você ainda não tem playlists. Toque em + Nova playlist.');
         return;
       }
       const selected=playlist.songIds.map(id=>songs.find(s=>String(s.id)===String(id))).filter(Boolean);
       $('#playlistSummary').textContent=playlist.description || '';
       $('#collectionTitle').textContent=playlist.name;
-      $('#library').innerHTML=`<div class="tracks">${selected.map((x,i)=>row(libraryItem(x),i)).join('')}</div>`;
-      status(selected.length?`${selected.length} música${selected.length===1?'':'s'}.`:'Esta playlist ainda não tem músicas. Use Criar playlist para adicionar.');
+      $('#library').innerHTML=`<div class="tracks">${selected.map((x,i)=>row(libraryItem(x),i).replace(/<\/article>$/,`<button type="button" class="pill small" data-remove="${esc(x.id)}" aria-label="Remover ${esc(x.track)} da playlist">Remover</button></article>`)).join('')}</div>`;
+      status(selected.length?`${selected.length} música${selected.length===1?'':'s'}.`:'Esta playlist ainda não tem músicas. Use + Nova playlist para adicionar.');
     }
-    $('#library').onclick=ev=>{const card=ev.target.closest('[data-open]');if(card)open(card.dataset.open);};
+    $('#library').onclick=async ev=>{
+      const rm=ev.target.closest('[data-remove]');
+      if(rm){
+        rm.disabled=true;
+        try{await collectionPost({action:'removeTrack',playlistId:sel,trackId:rm.dataset.remove});await loadLibrary();}
+        catch(e){rm.disabled=false;status(e.message,true);}
+        return;
+      }
+      const card=ev.target.closest('[data-open]');if(card)open(card.dataset.open);
+    };
+    $('#playlistDelete').onclick=async()=>{
+      const playlist=collection.playlists.find(p=>String(p.id)===sel);
+      if(!playlist||!confirm(`Apagar a playlist “${playlist.name}”?`))return;
+      try{
+        await collectionPost({action:'deletePlaylist',playlistId:playlist.id});
+        const next={...history.state,playlistId:''};history.replaceState(next,'',stateUrl(next));
+        await loadLibrary();
+      }catch(e){status(e.message,true);}
+    };
     $('#playlistBack').onclick=()=>open('');
     render();
   }catch(e){if(version===collectionVersion)status(e.message,true);}
