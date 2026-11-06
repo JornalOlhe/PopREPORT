@@ -37,7 +37,11 @@ async function json(url) {
   return data;
 }
 const dz = endpoint => json('https://api.deezer.com' + endpoint);
-const image = x => x.picture_xl || x.cover_xl || x.picture_big || x.cover_big || x.picture_medium || x.cover_medium || '';
+// Deezer devolve uma imagem cinza ("/images/artist//...") quando não há foto: tratamos como sem imagem.
+const image = x => {
+  const url = x.picture_big || x.cover_big || x.picture_xl || x.cover_xl || x.picture_medium || x.cover_medium || '';
+  return /\/images\/[a-z]+\/\//.test(url) ? '' : url;
+};
 const artist = x => ({ id: String(x.id), kind: 'artist', source: 'deezer', name: x.name, image: image(x), url: x.link });
 const album = x => ({ id: String(x.id), kind: 'album', source: 'deezer', name: x.title, image: image(x), artist: x.artist?.name || '', artistId: x.artist?.id == null ? '' : String(x.artist.id), releaseDate: x.release_date || '', totalTracks: x.nb_tracks || 0, recordType: x.record_type || '', url: x.link });
 const track = x => ({ id: String(x.id), kind: 'track', source: 'deezer', name: x.title, image: image(x.album || {}), artist: x.artist?.name || '', artistId: x.artist?.id == null ? '' : String(x.artist.id), album: x.album?.title || '', albumId: x.album?.id == null ? '' : String(x.album.id), releaseDate: x.album?.release_date || '', duration: x.duration, durationMs: Number(x.duration || 0) * 1000, explicit: Boolean(x.explicit_lyrics), trackNumber: x.track_position || 0, previewUrl: x.preview || '', url: x.link });

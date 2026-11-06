@@ -4,18 +4,8 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const output = path.join(root, 'docs');
 const files = [
-  'index.html',
-  'artist.html',
-  'library.html',
-  'form.html',
-  'app.css',
-  'script/app.js',
-  'script/form.js',
-  'script/api.js',
-  'script/cloud.js',
-  'script/auth.js',
-  'script/crud.js',
-  'script/music-data.js'
+  'index.html', 'artist.html', 'library.html', 'form.html', 'app.css',
+  ...fs.readdirSync(path.join(root, 'script')).filter(name => name.endsWith('.js') && name !== 'runtime-config.js').sort().map(name => `script/${name}`)
 ];
 const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.gif', '.ico']);
 // Chave pública (publishable) + URL do projeto: seguras no navegador; o acesso é protegido por RLS no banco.

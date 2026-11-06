@@ -9,7 +9,7 @@
   const fmt = s => (Number(s) > 0 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '');
   const say = (el, text, kind = '') => { el.textContent = text; el.classList.toggle('error', kind === 'error'); el.classList.toggle('success', kind === 'success'); };
 
-  const B = { view: null, playlists: [], activeId: null, artist: null, albums: [], dir: 'desc', album: null, tracks: [], keys: new Set(), adding: new Set(), queue: false, playing: -1 };
+  const B = { view: null, playlists: [], activeId: null, artist: null, albums: [], album: null, tracks: [], keys: new Set(), adding: new Set(), queue: false, playing: -1 };
   const versions = { search: 0, albums: 0, album: 0 };
   const artistsById = new Map();
   const audio = new Audio();
@@ -120,11 +120,9 @@
   const albumCard = (a, i) => `<article class="card"><button type="button" class="card-pick" data-album="${i}">${photo(a)}<h3>${esc(a.name)}</h3></button><p>${esc(albumMeta(a))}</p></article>`;
   const skeletons = n => Array.from({ length: n }, () => '<div class="card skeleton" aria-hidden="true"><div class="cover"></div><h3>&nbsp;</h3></div>').join('');
   function renderAlbums() {
-    const list = PopReportMusic.sortByRelease(B.albums, B.dir);
+    const list = PopReportMusic.sortByRelease(B.albums);
     B.shown = list;
     $('#albumGrid').innerHTML = list.map(albumCard).join('');
-    $('#sortAlbums').textContent = B.dir === 'desc' ? 'Mais recentes primeiro' : 'Mais antigos primeiro';
-    $('#sortAlbums').setAttribute('aria-pressed', String(B.dir === 'asc'));
   }
   async function chooseArtist(artist) {
     stopAudio();
@@ -143,7 +141,6 @@
       say($('#albumsStatus'), data.albums.length ? `${data.albums.length} lançamentos` : 'Nenhum lançamento disponível para este artista.');
     } catch (error) { if (version === versions.albums) { $('#albumGrid').replaceChildren(); say($('#albumsStatus'), error.message, 'error'); } }
   }
-  $('#sortAlbums').addEventListener('click', () => { B.dir = B.dir === 'desc' ? 'asc' : 'desc'; renderAlbums(); });
   $('#albumGrid').addEventListener('click', e => {
     const pick = e.target.closest('[data-album]');
     if (pick && B.shown?.[Number(pick.dataset.album)]) chooseAlbum(B.shown[Number(pick.dataset.album)]);
@@ -280,5 +277,4 @@
     },
     close() { stopAudio(); }
   };
-  if (history.state?.screen === 'form') PopReportBuilder.open();
 })();
