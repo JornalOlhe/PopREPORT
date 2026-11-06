@@ -21,8 +21,7 @@
       <p id="authMsg" role="status"></p>
       <button type="button" class="link" id="authSwitch">Não tem conta? Criar conta</button>
     </form>
-    <div id="authUser" hidden><p id="authWho"></p><a class="pill" href="./" data-screen="manage">Gerenciar meus dados</a><button type="button" class="primary" id="authOut">Sair</button></div>`;
-  dlg.addEventListener('click', e => { if (e.target.closest('a[data-screen]')) dlg.close(); });
+    <div id="authUser" hidden><p id="authWho"></p><button type="button" class="primary" id="authOut">Sair</button></div>`;
   document.body.append(dlg);
   const $ = s => dlg.querySelector(s);
   let mode = 'signin';
@@ -57,6 +56,12 @@
         const r = await cloud.signUp($('#authName').value, $('#authEmail').value, $('#authPass').value);
         if (!r.loggedIn) { msg.className = 'success'; msg.textContent = 'Conta criada. Confirme o e-mail enviado e depois entre.'; mode = 'signin'; return; }
       } else await cloud.signIn($('#authEmail').value, $('#authPass').value);
+      const moved = await root.PopReportAPI.importLocal().catch(() => null);
+      if (moved?.tracks) {
+        msg.className = 'success';
+        msg.textContent = `${moved.tracks} música${moved.tracks === 1 ? '' : 's'} das playlists deste navegador ${moved.tracks === 1 ? 'foi levada' : 'foram levadas'} para a sua conta.`;
+        await new Promise(r => setTimeout(r, 2000));
+      }
       location.reload();
     } catch (error) { msg.className = 'error'; msg.textContent = error.message; }
     finally { submit.disabled = false; }

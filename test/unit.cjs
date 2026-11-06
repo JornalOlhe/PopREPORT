@@ -147,18 +147,19 @@ function trackPayload(album, track, source = 'deezer') {
   assert.ok(calls.some(c => c.url.pathname === '/rest/v1/playlists' && c.url.search === '?id=eq.7' && c.init.method === 'DELETE'));
   console.log('PASS: Supabase — login por e-mail, criação de playlist, RPC de inclusão e leitura da coleção');
 
-  // ---- CRUD genérico ----
-  const seen = [];
-  const baseFetch = globalThis.fetch;
-  globalThis.fetch = async (input, init = {}) => { const u = new URL(String(input)); if (u.pathname.startsWith('/rest/v1/artists') || u.pathname.startsWith('/rest/v1/genres')) { seen.push([init.method || 'GET', u.pathname + u.search, init.body]); return { ok: true, status: 200, json: async () => [], text: async () => '[]' }; } return baseFetch(input, init); };
-  await PopReportCloud.crud.create('artists', { name: 'Nova' });
-  await PopReportCloud.crud.update('artists', 3, { name: 'Outra' });
-  await PopReportCloud.crud.remove('genres', 4);
-  await PopReportCloud.crud.list('artists');
-  assert.deepEqual(seen.map(s => s[0] + ' ' + s[1].split('?')[0] + (s[1].includes('?') ? '?' + s[1].split('?')[1].split('&')[0] : '')), ['POST /rest/v1/artists', 'PATCH /rest/v1/artists?id=eq.3', 'DELETE /rest/v1/genres?id=eq.4', 'GET /rest/v1/artists?select=*']);
-  assert.equal(seen[0][2], '{"name":"Nova"}');
-  console.log('PASS: CRUD — criar, listar, editar e apagar via REST autenticado');
-  globalThis.fetch = baseFetch;
+  // ---- importação das playlists criadas sem login ----
+  localStorage.setItem('popreport.collection.v1', JSON.stringify({ profile: { name: 'Visitante' }, playlists: [{ id: 'l1', name: 'Tardes de jazz', description: '', songIds: ['deezer:111', 'velha'] }] }));
+  localStorage.setItem('popreport.saved.v1', JSON.stringify([
+    { id: 'deezer:111', source: 'deezer', externalId: '111', albumId: '9', artistId: '12369444', artist: 'Laufey', track: 'From the Start', album: 'Everything', image: 'https://cdn.test/e.jpg', duration: 170, url: '' },
+    { id: 'velha', source: 'deezer', externalId: '5', artistId: '1', artist: 'X', track: 'Antiga', album: 'Y', image: '', duration: 10, url: '' }
+  ]));
+  const rpcBefore = db.rpc.length;
+  assert.deepEqual(await api.importLocal(), { playlists: 1, tracks: 1, skipped: 1 });
+  assert.equal(db.rpc.length, rpcBefore + 1);
+  assert.equal(db.rpc.at(-1).p.albumId, '9');
+  assert.equal(localStorage.getItem('popreport.collection.v1'), null, 'dados locais saem do navegador após importar');
+  assert.deepEqual(await api.importLocal(), { playlists: 0, tracks: 0, skipped: 0 }, 'sem nada local, não faz nada');
+  console.log('PASS: playlists criadas sem login são levadas para a conta ao entrar');
 
   // ---- Login anônimo desativado: volta ao armazenamento do navegador ----
   globalThis.fetch = fakeFetch([[(u) => u.pathname === '/auth/v1/token', () => ({ status: 400, body: { msg: 'Invalid login credentials' } })]]);

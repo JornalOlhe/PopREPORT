@@ -146,15 +146,5 @@
     })();
     return readyPromise;
   }
-    function userId() {
-    try { return JSON.parse(atob(String(session?.access_token || readSession()?.access_token || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub || null; } catch { return null; }
-  }
-  // CRUD genérico (a segurança fica nas políticas RLS do banco).
-  const crud = {
-    list: (table, select = '*') => rest(`${table}?select=${select}&order=id.desc&limit=200`),
-    create: (table, row) => rest(table, { method: 'POST', prefer: 'return=minimal', body: row }),
-    update: (table, id, row) => rest(`${table}?id=eq.${Number(id)}`, { method: 'PATCH', prefer: 'return=minimal', body: row }),
-    remove: (table, id) => rest(`${table}?id=eq.${Number(id)}`, { method: 'DELETE', prefer: 'return=minimal' })
-  };
-  root.PopReportCloud = { crud, userId, ready, signUp, signIn, signOut, collection, songs, saveProfile, createPlaylist, addTrack, removeTrack, deletePlaylist };
+  root.PopReportCloud = { ready, signUp, signIn, signOut, collection, songs, saveProfile, createPlaylist, addTrack, removeTrack, deletePlaylist };
 })(globalThis);
