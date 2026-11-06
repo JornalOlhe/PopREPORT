@@ -21,7 +21,8 @@
       <p id="authMsg" role="status"></p>
       <button type="button" class="link" id="authSwitch">Não tem conta? Criar conta</button>
     </form>
-    <div id="authUser" hidden><p id="authWho"></p><button type="button" class="primary" id="authOut">Sair</button></div>`;
+    <div id="authUser" hidden><p id="authWho"></p><a class="pill" href="./" data-screen="manage">Gerenciar meus dados</a><button type="button" class="primary" id="authOut">Sair</button></div>`;
+  dlg.addEventListener('click', e => { if (e.target.closest('a[data-screen]')) dlg.close(); });
   document.body.append(dlg);
   const $ = s => dlg.querySelector(s);
   let mode = 'signin';

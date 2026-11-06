@@ -1,6 +1,6 @@
 # popreport
 
-Descoberta musical gratuita com identidade visual própria, busca por artista/banda, álbum e música, perfis dinâmicos, discografia, faixas populares, playlists e Spotify Embed oficial. Na versão local, quando as credenciais estão configuradas, a busca e os perfis usam diretamente a Spotify Web API.
+Descoberta musical gratuita com identidade visual própria, busca por artista/banda, álbum e música, perfis dinâmicos, discografia, faixas populares, playlists e Spotify Embed oficial.
 
 ## Site online
 
@@ -48,14 +48,14 @@ O build copia somente os HTML, CSS, JavaScript público e a imagem de fallback. 
 
 ## CRUD
 
-A tela **Gerenciar** (após entrar) faz criar, listar, editar e apagar de playlists, artistas, álbuns, músicas e gêneros, além de editar o perfil. O catálogo inicial é só leitura; cada usuário altera apenas o que criou (políticas RLS no Supabase).
+A tela **Gerenciar** (após entrar, em **Minha conta → Gerenciar meus dados**) faz criar, listar, editar e apagar de playlists, artistas, álbuns, músicas e gêneros, além de editar o perfil. O catálogo inicial é só leitura; cada usuário altera apenas o que criou (políticas RLS no Supabase).
 
 ## Estrutura
 
 - index.html, artist.html, library.html e form.html: interface fonte.
 - script/app.js e script/form.js: navegação, pesquisa, player e o fluxo playlist → artista → álbum → faixas.
-- script/api.js: acesso ao servidor local ou, na publicação, ao Supabase (com reserva no navegador).
-- script/cloud.js: cliente mínimo do Supabase (login anônimo + PostgREST).
+- script/api.js: camada de dados da publicação: Supabase quando há login, com reserva no navegador.
+- script/cloud.js: cliente mínimo do Supabase (Auth por e-mail e senha + PostgREST).
 - supabase.public.json: URL e chave pública do projeto Supabase usadas no build do Pages.
 - script/music-data.js: provedor público de dados compartilhado entre Node e Pages.
 - script/runtime-config.js: modo local; o build gera o modo estático em docs/.
@@ -88,6 +88,6 @@ A navegação usa uma única aplicação em index.html; artista.html, library.ht
 
 O nome visual é popreport. O endereço popreport.github.io depende de possuir uma conta/organização com o nome popreport e o repositório popreport.github.io; renomear o site ou este repositório não altera o proprietário JornalOlhe. A publicação atual continua em https://jornalolhe.github.io/PopREPORT/.
 
-O PDF exige no mínimo cinco entidades; foram mantidas seis principais e duas associativas. A interface utiliza perfil, playlists, músicas, álbuns, artistas e gêneros. No modo local há um usuário demonstrativo compartilhado, sem login, adequado à apresentação acadêmica no computador. O modo Pages guarda perfil, playlists e músicas no Supabase por navegador (login anônimo), ou apenas no navegador enquanto o login anônimo estiver desligado.
+O PDF exige no mínimo cinco entidades; foram mantidas seis principais e duas associativas. A interface utiliza perfil, playlists, músicas, álbuns, artistas e gêneros. Sem entrar numa conta, perfil, playlists e músicas ficam apenas no navegador; com login, ficam no Supabase.
 
-O SQL completo, a descrição atualizada e o prompt do modelo conceitual estão em database/. Para o modelo físico oficial, siga INSTRUCOES_WORKBENCH.txt; as imagens incluídas são referências e não um arquivo .mwb exportado nesta execução.
+O SQL completo do banco (tabelas, RLS e RPC) está em supabase/schema.sql.

@@ -4,7 +4,7 @@
 
 - Criar playlist → buscar artista (foto) → álbuns por data de lançamento → prévia do álbum e das faixas → adicionar várias faixas com o botão +.
 - Cada faixa é identificada no Supabase por `source` + `external_id` (artista, álbum, faixa e vínculo com a playlist).
-- Sem login anônimo ativo no Supabase, o app usa o armazenamento do navegador e avisa na tela.
+- Sem entrar numa conta, o app usa o armazenamento do navegador e avisa na tela.
 - Nenhum segredo é publicado: o navegador usa só a chave *publishable* (RLS protege os dados).
 - Imagens HTTPS externas são aceitas; URLs inseguras são rejeitadas.
 

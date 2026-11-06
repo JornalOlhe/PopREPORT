@@ -9,7 +9,7 @@
   const fmt = s => (Number(s) > 0 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '');
   const say = (el, text, kind = '') => { el.textContent = text; el.classList.toggle('error', kind === 'error'); el.classList.toggle('success', kind === 'success'); };
 
-  const B = { playlists: [], activeId: null, artist: null, albums: [], dir: 'desc', album: null, tracks: [], keys: new Set(), adding: new Set(), queue: false, playing: -1 };
+  const B = { view: null, playlists: [], activeId: null, artist: null, albums: [], dir: 'desc', album: null, tracks: [], keys: new Set(), adding: new Set(), queue: false, playing: -1 };
   const versions = { search: 0, albums: 0, album: 0 };
   const artistsById = new Map();
   const audio = new Audio();
@@ -18,18 +18,22 @@
   const active = () => B.playlists.find(p => String(p.id) === String(B.activeId));
   const reveal = el => { el.hidden = false; el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); };
 
+  // Só a etapa atual fica na tela; B.view nunca passa da última etapa já alcançada.
+  const order = ['playlist', 'artist', 'album', 'tracks'];
+  const reached = () => (!B.activeId ? 'playlist' : !B.artist ? 'artist' : !B.album ? 'album' : 'tracks');
+  function go(view) { B.view = view; renderSteps(); }
   function renderSteps() {
-    const stage = !B.activeId ? 'playlist' : !B.artist ? 'artist' : !B.album ? 'album' : 'tracks';
-    const order = ['playlist', 'artist', 'album', 'tracks'];
+    if (order.indexOf(B.view) < 0 || order.indexOf(B.view) > order.indexOf(reached())) B.view = reached();
     document.querySelectorAll('#builderSteps li').forEach(li => {
       const index = order.indexOf(li.dataset.step);
-      li.classList.toggle('is-current', li.dataset.step === stage);
-      li.classList.toggle('is-done', index < order.indexOf(stage));
-      if (li.dataset.step === stage) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
+      li.classList.toggle('is-current', li.dataset.step === B.view);
+      li.classList.toggle('is-done', index < order.indexOf(B.view));
+      if (li.dataset.step === B.view) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
     });
-    $('#stepArtist').hidden = !B.activeId;
-    $('#stepAlbums').hidden = !B.artist;
-    $('#stepTracks').hidden = !B.album;
+    $('#stepPlaylist').hidden = B.view !== 'playlist';
+    $('#stepArtist').hidden = B.view !== 'artist';
+    $('#stepAlbums').hidden = B.view !== 'album';
+    $('#stepTracks').hidden = B.view !== 'tracks';
   }
 
   // ---------- 1 · Playlist ----------
@@ -53,8 +57,10 @@
     B.activeId = B.playlists[Number(chip.dataset.playlist)].id;
     renderPicker();
     renderTracks();
-    renderSteps();
+    go('artist');
+    $('#artistQuery').focus({ preventScroll: true });
   });
+  $('#backToPlaylist').addEventListener('click', () => { stopAudio(); go('playlist'); });
   $('#newPlaylistForm').addEventListener('submit', async e => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -68,9 +74,9 @@
       await refresh();
       B.activeId = B.playlists.find(p => p.name.toLocaleLowerCase() === name.toLocaleLowerCase())?.id ?? B.activeId;
       renderPicker();
-      renderSteps();
+      go('artist');
       form.reset();
-      say(message, `Playlist “${name}” criada. Agora escolha o artista.`, 'success');
+      say(message, '');
       reveal($('#stepArtist'));
       $('#artistQuery').focus({ preventScroll: true });
     } catch (error) { say(message, error.message, 'error'); }
@@ -93,7 +99,7 @@
       artistsById.clear();
       data.artists.forEach(a => artistsById.set(String(a.id), a));
       $('#artistResults').innerHTML = data.artists.map(artistCard).join('');
-      say(status, data.artists.length ? `${data.artists.length} artistas para “${q}”. Escolha um.` : 'Nenhum artista encontrado. Tente outro nome.');
+      say(status, data.artists.length ? `${data.artists.length} artistas` : 'Nenhum artista encontrado. Tente outro nome.');
     } catch (error) { if (version === versions.search) say(status, error.message, 'error'); }
     finally { if (version === versions.search) $('#artistResults').setAttribute('aria-busy', 'false'); }
   });
@@ -104,7 +110,7 @@
   $('#changeArtist').addEventListener('click', () => {
     stopAudio();
     B.artist = null; B.album = null; B.albums = []; B.tracks = [];
-    renderSteps();
+    go('artist');
     reveal($('#stepArtist'));
     $('#artistQuery').focus({ preventScroll: true });
   });
@@ -127,14 +133,14 @@
     $('#pickedArtist').innerHTML = `${photo(artist, true)}<div><p class="hint">Artista</p><strong>${esc(artist.name)}</strong></div>`;
     $('#albumGrid').innerHTML = skeletons(8);
     say($('#albumsStatus'), 'Carregando álbuns…');
-    renderSteps();
+    go('album');
     reveal($('#stepAlbums'));
     try {
       const data = await PopReportAPI.request(`/api/music/artist/${encodeURIComponent(artist.id)}/albums`);
       if (version !== versions.albums) return;
       B.albums = data.albums;
       renderAlbums();
-      say($('#albumsStatus'), data.albums.length ? `${data.albums.length} lançamentos, do mais recente ao mais antigo. Escolha um para ver as faixas.` : 'Nenhum lançamento disponível para este artista.');
+      say($('#albumsStatus'), data.albums.length ? `${data.albums.length} lançamentos` : 'Nenhum lançamento disponível para este artista.');
     } catch (error) { if (version === versions.albums) { $('#albumGrid').replaceChildren(); say($('#albumsStatus'), error.message, 'error'); } }
   }
   $('#sortAlbums').addEventListener('click', () => { B.dir = B.dir === 'desc' ? 'asc' : 'desc'; renderAlbums(); });
@@ -174,11 +180,12 @@
   const keyOf = t => `${t.source}:${t.id}`;
   function trackRow(t, i) {
     const added = B.keys.has(keyOf(t));
-    return `<article class="track" style="--i:${Math.min(i, 14)}"><span class="number">${t.trackNumber || i + 1}</span><div class="track-info"><strong>${esc(t.name)}</strong><small>${esc([fmt(t.duration), t.explicit ? 'Explícita' : '', t.previewUrl ? '' : 'Sem prévia'].filter(Boolean).join(' · '))}</small></div><button type="button" class="play" data-preview="${i}" aria-label="Ouvir prévia de ${esc(t.name)}" ${t.previewUrl ? '' : 'disabled'}>${playIcon}</button><button type="button" class="add-btn${added ? ' is-added' : ''}" data-add="${i}" aria-label="${added ? `${esc(t.name)} já está em ${esc(active()?.name || 'a playlist')}` : `Adicionar ${esc(t.name)} a ${esc(active()?.name || 'a playlist')}`}" ${added ? 'disabled' : ''}>${added ? checkIcon : plusIcon}</button></article>`;
+    return `<article class="track"><span class="number">${t.trackNumber || i + 1}</span><div class="track-info"><strong>${esc(t.name)}</strong><small>${esc([fmt(t.duration), t.explicit ? 'Explícita' : '', t.previewUrl ? '' : 'Sem prévia'].filter(Boolean).join(' · '))}</small></div><button type="button" class="play" data-preview="${i}" aria-label="Ouvir prévia de ${esc(t.name)}" ${t.previewUrl ? '' : 'disabled'}>${playIcon}</button><button type="button" class="add-btn${added ? ' is-added' : ''}" data-add="${i}" aria-label="${added ? `${esc(t.name)} já está em ${esc(active()?.name || 'a playlist')}` : `Adicionar ${esc(t.name)} a ${esc(active()?.name || 'a playlist')}`}" ${added ? 'disabled' : ''}>${added ? checkIcon : plusIcon}</button></article>`;
   }
   function renderTracks() {
     if (!B.album) return;
     $('#trackList').innerHTML = B.tracks.map(trackRow).join('');
+    $('#trackList').querySelectorAll('.track').forEach((el, i) => el.style.setProperty('--i', Math.min(i, 14)));
     const pending = B.tracks.filter(t => !B.keys.has(keyOf(t))).length;
     $('#addAllTracks').disabled = !pending;
     $('#addAllTracks').textContent = pending ? `Adicionar todas (${pending})` : 'Todas já adicionadas';
@@ -189,9 +196,9 @@
     const version = ++versions.album;
     B.album = album; B.tracks = [];
     $('#albumPreview').innerHTML = `${photo(album)}<div><p class="hint">${esc(albumMeta(album))}</p><h3>${esc(album.name)}</h3><p>${esc(B.artist.name)}</p><button type="button" class="pill" id="playAlbum" disabled>Ouvir prévia do álbum</button><div id="albumEmbed"></div></div>`;
-    $('#trackList').innerHTML = skeletons(0) + '<div class="skeleton line"></div><div class="skeleton line"></div><div class="skeleton line"></div>';
+    $('#trackList').innerHTML = '<div class="skeleton line"></div><div class="skeleton line"></div><div class="skeleton line"></div>';
     say($('#tracksStatus'), 'Carregando faixas…');
-    renderSteps();
+    go('tracks');
     reveal($('#stepTracks'));
     try {
       const data = await PopReportAPI.request(`/api/music/album/${encodeURIComponent(album.id)}`);
@@ -209,10 +216,10 @@
           $('#albumEmbed').innerHTML = `<iframe title="Prévia do álbum no Spotify" src="${esc(embed.url)}" height="152" allow="autoplay; encrypted-media" loading="lazy"></iframe>`;
         } catch (error) { say($('#tracksStatus'), error.message, 'error'); }
       };
-      say($('#tracksStatus'), `${B.tracks.length} faixas. Use ▶ para ouvir a prévia e + para adicionar à playlist “${active()?.name || ''}”.`);
+      say($('#tracksStatus'), `${B.tracks.length} faixas · + adiciona a “${active()?.name || ''}”`);
     } catch (error) { if (version === versions.album) { $('#trackList').replaceChildren(); say($('#tracksStatus'), error.message, 'error'); } }
   }
-  $('#backToAlbums').addEventListener('click', () => { stopAudio(); B.album = null; B.tracks = []; renderSteps(); reveal($('#stepAlbums')); });
+  $('#backToAlbums').addEventListener('click', () => { stopAudio(); B.album = null; B.tracks = []; go('album'); reveal($('#stepAlbums')); });
 
   function payload(t, i) {
     const artist = B.artist, album = B.album;

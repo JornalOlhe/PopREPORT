@@ -38,7 +38,7 @@
       try { return keepSession(await auth('token?grant_type=refresh_token', { refresh_token: session.refresh_token })); }
       catch (error) { if (!error.status || error.status >= 500) throw error; session = null; }
     }
-    const error = new Error('login'); error.status = 401; throw error;
+    const error = new Error('Sua sessão expirou. Entre novamente.'); error.status = 401; throw error;
   }
   function authMessage(error) {
     const t = String(error?.message || '');
