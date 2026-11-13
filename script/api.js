@@ -56,6 +56,7 @@
       saveCollection(data);
     },
     async songs() { return storedSongs(); },
+    async catalog() { return []; },
     async removeTrack(playlistId, trackId) {
       const data = collectionData();
       const playlist = data.playlists.find(p => String(p.id) === String(playlistId));
@@ -88,6 +89,7 @@
     profile: name => root.PopReportCloud.saveProfile(name),
     playlist: (name, description) => root.PopReportCloud.createPlaylist(name, description),
     songs: () => root.PopReportCloud.songs(),
+    catalog: () => root.PopReportCloud.catalog(),
     add: (playlistId, track) => root.PopReportCloud.addTrack(playlistId, track),
     removeTrack: (playlistId, trackId) => root.PopReportCloud.removeTrack(playlistId, trackId),
     deletePlaylist: playlistId => root.PopReportCloud.deletePlaylist(playlistId)
@@ -150,6 +152,7 @@
       return db.collection();
     }
     if (url.pathname === '/api/lista') return (await store()).songs();
+    if (url.pathname === '/api/catalogo') return (await store()).catalog();
     if (url.pathname === '/api/playlist-tracks' && options.method === 'POST') {
       let input;
       try { input = JSON.parse(options.body); } catch { throw new Error('Não foi possível ler os dados enviados.'); }

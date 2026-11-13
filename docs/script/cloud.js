@@ -100,36 +100,45 @@
 
   const trackKey = row => `${row.source}:${row.external_id}`;
 
+  // LE6 - JOINs: as consultas abaixo leem views do Supabase (supabase/le6_joins.sql) que juntam varias tabelas.
   async function collection() {
     const [profile, playlists, links] = await Promise.all([
       rest('profiles?select=display_name&limit=1'),
-      rest('playlists?select=id,name,description&order=id.asc&limit=100'),
-      rest('playlist_tracks?select=playlist_id,track_id,position,tracks(source,external_id)&order=position.asc&limit=5000')
+      // v_playlist_resumo = playlists JOIN profiles LEFT JOIN playlist_tracks/tracks/albums (totais por playlist)
+      rest('v_playlist_resumo?select=playlist_id,name,description,total_faixas,duracao_ms,total_artistas&order=playlist_id.asc&limit=100'),
+      // v_playlist_faixas = playlist_tracks JOIN playlists JOIN tracks JOIN albums JOIN artists
+      rest('v_playlist_faixas?select=playlist_id,track_id,source,external_id,position&order=position.asc&limit=5000')
     ]);
     return {
       profile: { name: profile?.[0]?.display_name || 'Visitante' },
       playlists: (playlists || []).map(p => {
-        const own = (links || []).filter(l => l.playlist_id === p.id && l.tracks);
-        return { id: p.id, name: p.name, description: p.description || '', songIds: own.map(l => l.track_id), trackKeys: own.map(l => trackKey(l.tracks)) };
+        const own = (links || []).filter(l => l.playlist_id === p.playlist_id);
+        return { id: p.playlist_id, name: p.name, description: p.description || '', songIds: own.map(l => l.track_id), trackKeys: own.map(l => trackKey(l)),
+          totalTracks: p.total_faixas, totalArtists: p.total_artistas, durationMs: Number(p.duracao_ms) };
       })
     };
   }
   async function songs() {
-    const rows = await rest('playlist_tracks?select=added_at,tracks(id,source,external_id,title,duration_ms,url,albums(title,image_url,release_date,artists(name,external_id,image_url)))&order=added_at.desc&limit=1000');
+    // JOIN de 5 tabelas numa unica consulta (v_playlist_faixas), em vez de embutir tabelas aninhadas.
+    const rows = await rest('v_playlist_faixas?select=added_at,track_id,source,external_id,title,duration_ms,url,album_titulo,image_url,artist_external_id,artista_nome&order=added_at.desc&limit=1000');
     const seen = new Set();
     const out = [];
     for (const row of rows || []) {
-      const t = row.tracks;
-      if (!t || seen.has(t.id)) continue;
-      seen.add(t.id);
+      if (seen.has(row.track_id)) continue;
+      seen.add(row.track_id);
       out.push({
-        id: t.id, source: t.source, externalId: t.external_id, artistId: t.albums?.artists?.external_id || '',
-        artist: t.albums?.artists?.name || '', track: t.title, album: t.albums?.title || '', image: t.albums?.image_url || '',
-        duration: Math.round(Number(t.duration_ms || 0) / 1000), url: t.url || '', genre: '', createdAt: row.added_at
+        id: row.track_id, source: row.source, externalId: row.external_id, artistId: row.artist_external_id || '',
+        artist: row.artista_nome || '', track: row.title, album: row.album_titulo || '', image: row.image_url || '',
+        duration: Math.round(Number(row.duration_ms || 0) / 1000), url: row.url || '', genre: '', createdAt: row.added_at
       });
       if (out.length >= 500) break;
     }
     return out;
+  }
+  // v_artista_catalogo = artists LEFT JOIN albums LEFT JOIN tracks LEFT JOIN artist_genres LEFT JOIN genres
+  async function catalog() {
+    const rows = await rest('v_artista_catalogo?select=id,source,external_id,name,image_url,total_albuns,total_faixas,generos&order=name.asc&limit=100');
+    return (rows || []).map(r => ({ id: r.external_id, source: r.source, name: r.name, image: r.image_url || '', albums: r.total_albuns, tracks: r.total_faixas, genres: r.generos || '' }));
   }
   const saveProfile = name => rest('profiles?on_conflict=owner_id', { method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal', body: { display_name: name } });
   const createPlaylist = (name, description) => rest('playlists', { method: 'POST', prefer: 'return=minimal', body: { name, description: description || null } });
@@ -146,5 +155,5 @@
     })();
     return readyPromise;
   }
-  root.PopReportCloud = { ready, signUp, signIn, signOut, collection, songs, saveProfile, createPlaylist, addTrack, removeTrack, deletePlaylist };
+  root.PopReportCloud = { ready, signUp, signIn, signOut, collection, songs, catalog, saveProfile, createPlaylist, addTrack, removeTrack, deletePlaylist };
 })(globalThis);

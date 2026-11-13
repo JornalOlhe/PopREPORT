@@ -114,7 +114,11 @@ function trackPayload(album, track, source = 'deezer') {
     [(u, i) => u.pathname === '/rest/v1/playlists' && i.method === 'POST', (u, i) => { db.playlists.push({ id: 7, ...JSON.parse(i.body) }); return { status: 201 }; }],
     [(u, i) => u.pathname === '/rest/v1/playlists', () => ({ status: 200, body: db.playlists.map(p => ({ id: p.id, name: p.name, description: p.description })) })],
     [(u, i) => u.pathname === '/rest/v1/rpc/add_track_to_playlist', (u, i) => { db.rpc.push(JSON.parse(i.body)); db.links = [{ playlist_id: 7, track_id: 55, position: 1, added_at: '2026-10-30T12:00:00Z', tracks: { id: 55, source: 'deezer', external_id: '111', title: 'From the Start', duration_ms: 170000, url: 'https://www.deezer.com/track/111', albums: { title: 'Everything I Know About Love', image_url: 'https://cdn.test/e.jpg', release_date: '2021-08-27', artists: { name: 'Laufey', external_id: '12369444', image_url: null } } } }]; return { status: 200, body: 55 }; }],
-    [(u, i) => u.pathname === '/rest/v1/playlist_tracks', () => ({ status: 200, body: db.links })]
+    [(u, i) => u.pathname === '/rest/v1/playlist_tracks', () => ({ status: 200, body: db.links })],
+    // LE6: views com JOIN
+    [(u, i) => u.pathname === '/rest/v1/v_playlist_resumo', () => ({ status: 200, body: db.playlists.map(p => ({ playlist_id: p.id, name: p.name, description: p.description, total_faixas: db.links.length, duracao_ms: db.links.length * 170000, total_artistas: db.links.length })) })],
+    [(u, i) => u.pathname === '/rest/v1/v_playlist_faixas', () => ({ status: 200, body: db.links.map(l => ({ playlist_id: l.playlist_id, position: l.position, added_at: l.added_at, track_id: l.tracks.id, source: l.tracks.source, external_id: l.tracks.external_id, title: l.tracks.title, duration_ms: l.tracks.duration_ms, url: l.tracks.url, album_titulo: l.tracks.albums.title, image_url: l.tracks.albums.image_url, artist_external_id: l.tracks.albums.artists.external_id, artista_nome: l.tracks.albums.artists.name })) })],
+    [(u, i) => u.pathname === '/rest/v1/v_artista_catalogo', () => ({ status: 200, body: [{ id: 1, source: 'deezer', external_id: '12369444', name: 'Laufey', image_url: null, total_albuns: 1, total_faixas: 1, generos: 'Jazz pop' }] })]
   ]);
   api = freshApp({ cloud: true });
   assert.equal(await api.storage(), 'local', 'sem login, usa o navegador');
@@ -137,7 +141,8 @@ function trackPayload(album, track, source = 'deezer') {
   assert.equal(rpcCall.init.headers.Authorization, 'Bearer jwt-1');
   assert.equal(rpcCall.init.headers.apikey, 'sb_publishable_test');
   collection = await api.request('/api/collection');
-  assert.deepEqual(collection.playlists[0], { id: 7, name: 'Tardes de jazz', description: 'Calmas', songIds: [55], trackKeys: ['deezer:111'] });
+  assert.deepEqual(collection.playlists[0], { id: 7, name: 'Tardes de jazz', description: 'Calmas', songIds: [55], trackKeys: ['deezer:111'], totalTracks: 1, totalArtists: 1, durationMs: 170000 });
+  assert.deepEqual(await api.request('/api/catalogo'), [{ id: '12369444', source: 'deezer', name: 'Laufey', image: '', albums: 1, tracks: 1, genres: 'Jazz pop' }]);
   const cloudSongs = await api.request('/api/lista');
   assert.deepEqual(cloudSongs.map(s => [s.id, s.track, s.artist, s.album, s.duration, s.source, s.externalId]), [[55, 'From the Start', 'Laufey', 'Everything I Know About Love', 170, 'deezer', '111']]);
   await post(api, '/api/collection', { action: 'removeTrack', playlistId: 7, trackId: 55 });

@@ -36,7 +36,7 @@ async function loadLibrary() {
         $('#library').innerHTML=collection.playlists.length?`<div class="grid playlist-grid">${collection.playlists.map(p=>{
           const first=p.songIds.map(id=>songs.find(s=>String(s.id)===String(id))).find(s=>s?.image);
           const cover=first?.image?`<img class="cover" src="${esc(safeUrl(first.image))}" alt="" loading="lazy">`:`<div class="cover playlist-empty" aria-hidden="true">♪</div>`;
-          return `<button type="button" class="card playlist-card" data-open="${esc(p.id)}">${cover}<h3>${esc(p.name)}</h3><p>${p.songIds.length} música${p.songIds.length===1?'':'s'}</p></button>`;}).join('')}</div>`:'';
+          return `<button type="button" class="card playlist-card" data-open="${esc(p.id)}">${cover}<h3>${esc(p.name)}</h3><p>${p.songIds.length} música${p.songIds.length===1?'':'s'}${p.totalArtists?` · ${p.totalArtists} artista${p.totalArtists===1?'':'s'}`:''}${p.durationMs?` · ${Math.max(1,Math.round(p.durationMs/60000))} min`:''}</p></button>`;}).join('')}</div>`:'';
         status(collection.playlists.length?'':'Você ainda não tem playlists. Toque em + Nova playlist.');
         return;
       }

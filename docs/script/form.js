@@ -44,7 +44,16 @@
     $('#activePlaylistName').textContent = active()?.name || '';
     B.keys = new Set(active()?.trackKeys || []);
   }
+  // Artistas já cadastrados no banco, com álbuns/faixas/gêneros vindos de um JOIN (v_artista_catalogo).
+  async function loadCatalog() {
+    try {
+      const list = await PopReportAPI.request('/api/catalogo');
+      $('#catalogBox').hidden = !list.length;
+      $('#catalogList').innerHTML = list.map(a => `<article class="track"><div class="track-info"><strong>${esc(a.name)}</strong><small>${a.albums} álbum(ns) · ${a.tracks} faixa(s)${a.genres ? ' · ' + esc(a.genres) : ''}</small></div></article>`).join('');
+    } catch { $('#catalogBox').hidden = true; }
+  }
   async function refresh() {
+    loadCatalog();
     const data = await PopReportAPI.request('/api/collection');
     B.playlists = data.playlists || [];
     if (!active()) B.activeId = B.playlists.length ? B.playlists[B.playlists.length - 1].id : null;
